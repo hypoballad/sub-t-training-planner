@@ -7,7 +7,12 @@
   <meta name="description" content="5 km の走力からサブスレッショルドのペースと週間練習計画を作成します。">
   <title>Sub-T Training Planner</title>
   <link rel="stylesheet" href="./style.css">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <script type="module" src="./src/app.mjs"></script>
+  <script type="module" src="./src/pwa.mjs"></script>
 </head>
 <body>
   <a class="skip" href="#planner">入力フォームへ移動</a>
@@ -140,6 +145,10 @@
       <p class="source">参考文献　<em>Norwegian Singles Method: Subthreshold Running Kept Simple</em></p>
     </section>
   </main>
-  <footer class="shell foot"><span>Sub-T Training Planner</span><a href="#top">ページトップ ↑</a></footer>
+  <footer class="shell foot">
+    <span>Sub-T Training Planner</span>
+    <button class="secondary" id="pwa-update" type="button" hidden>新しいバージョンに更新</button>
+    <a href="#top">ページトップ ↑</a>
+  </footer>
 </body>
 </html>

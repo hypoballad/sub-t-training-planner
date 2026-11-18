@@ -4,7 +4,10 @@ import { readFile } from 'node:fs/promises';
 const files = new Map([
   ['index.html', 'text/html; charset=utf-8'],
   ['style.css', 'text/css; charset=utf-8'],
-  ...['app', 'engine', 'reference', 'coros', 'cross-training'].map((file) => [`src/${file}.mjs`, 'text/javascript; charset=utf-8']),
+  ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
+  ['service-worker.js', 'text/javascript; charset=utf-8'],
+  ...['app', 'engine', 'reference', 'coros', 'cross-training', 'pwa'].map((file) => [`src/${file}.mjs`, 'text/javascript; charset=utf-8']),
+  ...['icon-192', 'icon-512', 'icon-maskable-512', 'apple-touch-icon'].map((file) => [`icons/${file}.png`, 'image/png']),
 ]);
 const port = Number(process.env.SUB_T_PORT ?? 4173);
 const prefix = process.env.SUB_T_PREVIEW_PREFIX ?? '';

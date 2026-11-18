@@ -12,6 +12,14 @@ node tools/serve.mjs
 
 開発サーバーの終了は Ctrl+C です。ES Modules を読み込むため、ブラウザからは HTTP 経由で開いてください。パッケージのインストールは不要です。
 
+## ホーム画面への追加とオフライン利用
+
+対応ブラウザから「アプリをインストール」または「ホーム画面に追加」を選びます。iPhone・iPad では、Safari の共有メニューから追加できます。インストール後はアプリ用のウィンドウで開きます。
+
+利用するブラウザまたはホーム画面アプリで一度オンラインで開き、初回読み込みを完了してください。以降、キャッシュが利用できる間はネット接続なしで計算できます。更新ボタンが表示されたときは、入力を済ませてから「新しいバージョンに更新」を選べます。
+
+更新時に整理されるのは旧版のアプリキャッシュです。保存していた設定は同じ保存領域で引き継がれます。Safari から追加したホーム画面アプリなど、保存領域が別の場合は既存の「JSON出力」と「読み込み」で設定を移せます。[WebKit のホーム画面アプリの説明](https://webkit.org/blog/14787/webkit-features-in-safari-17-2/#web-apps)
+
 ## 動作テスト
 
 ```sh
@@ -23,6 +31,8 @@ node --test
 フォルダの内容をリポジトリのルートに置いてください。隠しディレクトリの `.github` も含めます。リポジトリの **Settings → Pages → Build and deployment → Source** を **GitHub Actions** に設定すると、`main` への push または Actions タブからの手動実行で公開できます。ワークフローは Node.js の計算テストに成功した後、アプリのファイルだけを Pages に送ります。公開 URL は GitHub の Pages 設定とデプロイ結果で確認できます。[GitHub Pages の公式手順](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
 
 ブランチ公開を利用する場合は **Deploy from a branch → main → /(root)** を選択します。Jekyll を省くため空の `.nojekyll` を含めています。すべてのアプリ内アセットは相対パスです。[公開元の設定](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
+
+GitHub Actions はコミットごとに Service Worker のキャッシュ番号を更新します。ブランチ公開でオフライン用のファイルを変更したときは `service-worker.js` の `CACHE_VERSION` を更新してください。
 
 ## 計算根拠と適用範囲
 
