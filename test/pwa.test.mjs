@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { watchPwaUpdates } from '../src/pwa.mjs';
 
 const asset = (path) => new URL(`../${path}`, import.meta.url);
 const scope = 'https://example.test/sub-t-training-planner/';
@@ -113,4 +114,111 @@ test('navigations and modules use the cached app while unrelated requests pass t
   assert.equal(request('https://example.test/other/', 'navigate'), undefined);
   assert.equal(request(moduleUrl.replace('example.test', 'other.test')), undefined);
   assert.equal(request(scope, 'navigate', 'POST'), undefined);
+});
+
+function makeUpdateContext({ online = true, hasActive = true, failCheck = false } = {}) {
+  const initialWorker = hasActive ? {} : null;
+  const registration = Object.assign(new EventTarget(), {
+    active: initialWorker, waiting: null, installing: null, checks: 0,
+    async update() {
+      this.checks += 1;
+      if (failCheck) throw new Error('network unavailable');
+    },
+  });
+  const serviceWorker = Object.assign(new EventTarget(), { controller: initialWorker });
+  const notice = { hidden: true };
+  const button = new EventTarget();
+  const sent = [];
+  let reloads = 0;
+  return {
+    registration, serviceWorker, notice, button, sent,
+    reloads: () => reloads,
+    initialize: () => watchPwaUpdates(registration, serviceWorker, { notice, button, online, reload: () => { reloads += 1; } }),
+    install() {
+      const candidate = Object.assign(new EventTarget(), {
+        state: 'installing',
+        postMessage: (data) => sent.push(data),
+      });
+      registration.installing = candidate;
+      registration.dispatchEvent(new Event('updatefound'));
+      return candidate;
+    },
+    wait(candidate) {
+      registration.installing = null;
+      registration.waiting = candidate;
+      candidate.state = 'installed';
+      candidate.dispatchEvent(new Event('statechange'));
+    },
+    activate(candidate) {
+      registration.waiting = null;
+      registration.active = candidate;
+      serviceWorker.controller = candidate;
+      serviceWorker.dispatchEvent(new Event('controllerchange'));
+    },
+  };
+}
+
+test('online startup checks for updates and shows a notification once a worker waits', async () => {
+  const context = makeUpdateContext();
+  await context.initialize();
+  assert.equal(context.registration.checks, 1);
+  const candidate = context.install();
+  assert.equal(context.notice.hidden, true);
+  context.wait(candidate);
+  assert.equal(context.notice.hidden, false);
+  assert.equal(context.button.textContent, '更新する');
+  assert.deepEqual(context.sent, []);
+  assert.equal(context.reloads(), 0);
+});
+
+test('a pending update is shown immediately, including when starting offline', async () => {
+  const context = makeUpdateContext({ online: false });
+  context.wait(context.install());
+  await context.initialize();
+  assert.equal(context.registration.checks, 0);
+  assert.equal(context.notice.hidden, false);
+  assert.equal(context.reloads(), 0);
+});
+
+test('first install and network failure do not block use or trigger a reload', async () => {
+  const first = makeUpdateContext({ hasActive: false });
+  await first.initialize();
+  const candidate = first.install();
+  first.wait(candidate);
+  assert.equal(first.notice.hidden, true);
+  first.activate(candidate);
+  assert.equal(first.reloads(), 0);
+  assert.equal(first.registration.checks, 0);
+
+  const unreachable = makeUpdateContext({ failCheck: true });
+  await unreachable.initialize();
+  assert.equal(unreachable.registration.checks, 1);
+  assert.equal(unreachable.notice.hidden, true);
+});
+
+test('a click activates only the waiting worker and reloads once when it takes control', async () => {
+  const context = makeUpdateContext();
+  await context.initialize();
+  context.button.dispatchEvent(new Event('click'));
+  assert.deepEqual(context.sent, []);
+  const candidate = context.install();
+  context.wait(candidate);
+  context.button.dispatchEvent(new Event('click'));
+  context.button.dispatchEvent(new Event('click'));
+  assert.deepEqual(context.sent, ['activate-update']);
+  assert.equal(context.button.disabled, true);
+  assert.equal(context.reloads(), 0);
+  context.activate(candidate);
+  context.serviceWorker.dispatchEvent(new Event('controllerchange'));
+  assert.equal(context.reloads(), 1);
+});
+
+test('a worker change from another tab does not reload this tab', async () => {
+  const context = makeUpdateContext();
+  await context.initialize();
+  const candidate = context.install();
+  context.wait(candidate);
+  context.activate(candidate);
+  assert.equal(context.notice.hidden, true);
+  assert.equal(context.reloads(), 0);
 });

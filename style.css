@@ -30,6 +30,10 @@ button, summary, select { cursor: pointer; }
 .nav a, .foot a { text-decoration: none; }
 .nav nav { display: flex; gap: 26px; font-size: .82rem; color: #d2e5da; }
 .nav a:hover, .foot a:hover { text-decoration: underline; }
+.pwa-update-notice { position: sticky; top: 0; z-index: 2; background: var(--light); border-bottom: 1px solid var(--line); }
+.pwa-update-content { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 50px; }
+.pwa-update-content p { margin: 0; font-size: .88rem; font-weight: 680; }
+.pwa-update-content button { flex: 0 0 auto; min-height: 38px; }
 .brand { display: flex; align-items: center; gap: 8px; font-size: 1.14rem; font-weight: 750; letter-spacing: -.03em; }
 .brand-tail { font-size: .90rem; font-weight: 500; color: #b9d5c6; }
 .mark { display: inline-flex; align-items: end; gap: 3px; padding-right: 4px; transform: skew(-13deg); }
@@ -202,7 +206,7 @@ thead th { background: var(--light); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 @media print {
   :root { --bg: white; }
-  .top, .control, .foot, .small-actions, .week-select, .skip, .intro-aside { display: none; }
+  .top, .pwa-update-notice, .control, .foot, .small-actions, .week-select, .skip, .intro-aside { display: none; }
   .shell { width: 100%; }
   .workspace { display: block; }
   .intro { padding: 0 0 12px; }
