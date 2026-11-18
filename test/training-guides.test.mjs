@@ -23,11 +23,11 @@ test('70% of HRmax remains available when the 5 km value is missing', () => {
 });
 
 test('Easy reference changes with the selected pace input', () => {
-  const settings = { ...DEFAULTS, five: '20:00', coros: '4:50', corosPrediction: '22:40', pace3: '5:00', pace6: '5:10', pace10: '5:30' };
+  const settings = { ...DEFAULTS, five: '20:00', coros: '4:50', pace3: '5:00', pace6: '5:10', pace10: '5:30' };
   const easy = (selection) => easyRunGuide(paceInputs({ ...settings, ...selection }).reference).pace;
   assert.equal(clock(easy({ paceMode: 'five' })), '5:43');
   assert.equal(clock(easy({ paceMode: 'coros' })), '6:33');
-  assert.equal(clock(easy({ paceMode: 'coros', corosSource: 'prediction' })), '6:29');
+  assert.equal(clock(easy({ paceMode: 'five', five: '22:40' })), '6:29');
   assert.equal(easy({ paceMode: 'manual' }), null);
   assert.equal(easy({ paceMode: 'coros', coros: '' }), null);
 });

@@ -6,10 +6,9 @@ const DAY = 86400000;
 export const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
 export const RACES = { general: '一般トレーニング', '5k': '5 km', '10k': '10 km', half: 'ハーフマラソン', full: 'フルマラソン' };
 export const PACE_MODES = { five: '5 km タイム基準', coros: 'COROS 閾値ペース基準', manual: '手動指定' };
-export const COROS_SOURCES = { threshold: '閾値ペースから推定', prediction: 'COROS の5 kmレース予測タイムを使用' };
 export const DEFAULTS = {
   ...CROSS_DEFAULTS,
-  paceMode: 'five', corosSource: 'threshold', five: '', coros: '', corosPrediction: '',
+  paceMode: 'five', five: '', coros: '',
   riegelMinutes: RIEGEL_DEFAULTS.minutes, riegelExponent: RIEGEL_DEFAULTS.exponent,
   alertFast: 5, alertSlow: 10,
   lthr: '', maxHr: '', hours: '', count: 7, easy: '', long: '', sessions: '',
@@ -48,7 +47,7 @@ export function tablePaces(fiveSeconds) {
 
 export function paceInputs(settings) {
   const mode = settings.paceMode ?? DEFAULTS.paceMode;
-  const source = mode === 'coros' ? (settings.corosSource ?? DEFAULTS.corosSource) : mode;
+  const source = mode === 'coros' ? 'threshold' : mode;
   const comparisonWarnings = [];
   let issue = '';
   const read = (name, label, range, active) => {
@@ -65,7 +64,6 @@ export function paceInputs(settings) {
   };
   const five = read('five', '5 km タイム', { min: 5, max: 120 }, source === 'five');
   const coros = read('coros', 'COROS 閾値ペース', { min: 2, max: 30 }, source === 'threshold');
-  const prediction = read('corosPrediction', 'COROS の5 kmレース予測タイム', { min: 5, max: 120 }, source === 'prediction');
   const duration = settings.riegelMinutes ?? DEFAULTS.riegelMinutes;
   const exponent = settings.riegelExponent ?? DEFAULTS.riegelExponent;
   let estimate = null;
@@ -76,7 +74,7 @@ export function paceInputs(settings) {
       issue = error.message;
     }
   }
-  const reference = { five, threshold: estimate, prediction }[source] ?? null;
+  const reference = { five, threshold: estimate }[source] ?? null;
   let values = tablePaces(reference);
   const outOfRange = reference !== null && !values;
   if (outOfRange) issue = '基準となる5 kmタイムが表 1.4 の15:00〜30:00の範囲外です。手動指定に切り替えられます。';
@@ -86,7 +84,7 @@ export function paceInputs(settings) {
   }
   const label = source === 'manual' ? '手動指定' : (reference - 900) % 20 ? '表 1.4・線形補間' : '表 1.4';
   const paces = REP_MINUTES.map((rep, i) => ({ rep, base: values?.[i] ?? null, source: label }));
-  return { five, coros, prediction, estimate, reference, source, duration, exponent, issue, outOfRange, comparisonWarnings, paces };
+  return { five, coros, estimate, reference, source, duration, exponent, issue, outOfRange, comparisonWarnings, paces };
 }
 
 function interpolate(values, position) {

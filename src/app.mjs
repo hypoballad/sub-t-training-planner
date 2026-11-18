@@ -1,5 +1,5 @@
 import { BOOK_WEEKS, REP_MINUTES } from './reference.mjs';
-import { COROS_SOURCES, DEFAULTS, PACE_MODES, RACES, WEEKDAYS, clock, corosPaceAlert, easyRunGuide, environmentalPace, localDate, paceInputs, parseClock, session, trainingPlan } from './engine.mjs';
+import { DEFAULTS, PACE_MODES, RACES, WEEKDAYS, clock, corosPaceAlert, easyRunGuide, environmentalPace, localDate, paceInputs, parseClock, session, trainingPlan } from './engine.mjs';
 import { CROSS_LABELS, CYCLING_MODES, CYCLING_WEEKS, INTENSITIES, CrossTrainingError, cyclingWatts } from './cross-training.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -87,10 +87,8 @@ $('cross-fields').innerHTML = renderFields(crossFields);
 
 const descriptors = [
   select('paceMode', 'ペース計算方式', PACE_MODES),
-  select('corosSource', 'COROS の計算元', COROS_SOURCES),
   time('five', '5 km タイム'),
   time('coros', 'COROS 閾値ペース'),
-  time('corosPrediction', 'COROS の5 kmレース予測タイム'),
   number('alertFast', '速い側の許容幅（秒/km）', 0, 60, '5', 'any'),
   number('alertSlow', '遅い側の許容幅（秒/km）', 0, 60, '10', 'any'),
   ...REP_MINUTES.map((rep) => time(`pace${rep}`, `${rep}分反復ペース`)),
@@ -120,6 +118,16 @@ function clean(input) {
   if (input.paceMode === undefined) {
     if (REP_MINUTES.every((rep) => result[`pace${rep}`])) result.paceMode = 'manual';
     else if (!result.five && result.coros) result.paceMode = 'coros';
+  }
+  // Preserve a previously selected race prediction when the destination field is empty.
+  if (input.paceMode === 'coros' && input.corosSource === 'prediction' && !result.five && typeof input.corosPrediction === 'string') {
+    try {
+      const prediction = parseClock(input.corosPrediction, { min: 5, max: 120 });
+      result.five = clock(prediction);
+      result.paceMode = 'five';
+    } catch {
+      // Keep the threshold mode when there is no usable time to migrate.
+    }
   }
   for (const name of dayFields) {
     const days = input[name];
@@ -158,12 +166,9 @@ function syncForm() {
   const isCustom = form.elements.mode.value === 'custom';
   const paceMode = form.elements.paceMode.value;
   const isCoros = paceMode === 'coros';
-  const usesPrediction = isCoros && form.elements.corosSource.value === 'prediction';
-  $('coros-source-field').hidden = !isCoros;
-  $('coros-prediction-field').hidden = !usesPrediction;
   $('manual-pace-fields').hidden = paceMode !== 'manual';
-  $('five-help').textContent = paceMode === 'five' ? '最近の走力を反映した記録' : '比較用（任意）';
-  $('coros-help').textContent = isCoros && !usesPrediction ? 'Riegel モデルで5 kmタイムを推定' : '比較用（任意）';
+  $('five-help').textContent = paceMode === 'five' ? '実測・予測どちらでも入力できます' : '比較用（任意）';
+  $('coros-help').textContent = isCoros ? 'Riegel モデルで5 kmタイムを推定' : '比較用（任意）';
   const visible = { full: isFull, custom: isCustom, 'cycling-custom': form.elements.cyclingPlan.value === 'custom' };
   for (const element of form.querySelectorAll('[data-condition]')) {
     element.hidden = !visible[element.dataset.condition];
@@ -215,19 +220,17 @@ function calculate(settings) {
 
 function renderPaces() {
   const { input, paces, settings, plan } = model;
-  const { five, coros, prediction, estimate, source, duration, exponent, issue, outOfRange, comparisonWarnings } = input;
+  const { five, coros, estimate, source, duration, exponent, issue, outOfRange, comparisonWarnings } = input;
   const sourceTitle = {
-    five: '5 km の実測タイムを使った Sub-T ペース',
+    five: '5 km の入力タイムを使った Sub-T ペース',
     threshold: 'COROS閾値ペースから推定したSub-Tペース',
-    prediction: 'COROS の5 kmレース予測タイムを使った Sub-T ペース',
     manual: '手動指定の Sub-T ペース',
   }[source];
-  $('pace-status').textContent = outOfRange ? '表の範囲外' : issue ? '入力を確認' : source === 'threshold' || source === 'prediction' ? '推定ペース' : 'ペース算出済み';
+  $('pace-status').textContent = outOfRange ? '表の範囲外' : issue ? '入力を確認' : source === 'threshold' ? '推定ペース' : 'ペース算出済み';
   const metrics = [];
-  if (five !== null) metrics.push(`<span>${source === 'five' ? '' : '比較用 · '}5 km 実測 <strong>${clock(five)}</strong>（平均 ${paceLabel(five / 5)}）</span>`);
+  if (five !== null) metrics.push(`<span>${source === 'five' ? '' : '比較用 · '}5 km 入力タイム <strong>${clock(five)}</strong>（平均 ${paceLabel(five / 5)}）</span>`);
   if (coros !== null) metrics.push(`<span>${source === 'threshold' ? '' : '比較用 · '}COROS 閾値ペース <strong>${paceLabel(coros)}</strong></span>`);
   if (estimate !== null) metrics.push(`<span>推定5 kmタイム <strong>${clock(estimate)}</strong></span>`);
-  if (prediction !== null) metrics.push(`<span>${source === 'prediction' ? '' : '比較用 · '}COROS の5 kmレース予測 <strong>${clock(prediction)}</strong></span>`);
   const warnings = [...comparisonWarnings, ...paces.flatMap((pace) => pace.warnings)];
   const detailsOpen = $('pace-output').querySelector('details')?.open;
   const starters = [8, 5, 3];
@@ -251,7 +254,6 @@ function renderPaces() {
     ${metrics.length ? `<div class="inputs-comp">${metrics.join('')}</div>` : ''}
     ${issue ? `<p class="note${outOfRange ? ' warning' : ''}">${issue}</p>` : ''}
     ${source === 'threshold' ? `<p class="note">COROS閾値ペースを${duration}分持続可能なペースと仮定し、Riegelモデルから5kmタイムを推定しています。この換算は本書およびCOROS公式の指定式ではありません。Riegel指数は${exponent}です。</p>` : ''}
-    ${source === 'prediction' ? '<p class="note">COROS のレース予測タイムを表 1.4 に当てはめています。</p>' : ''}
     ${notes(warnings)}
     <details class="data"${detailsOpen ? ' open' : ''}><summary>おすすめインターバルと所要時間</summary>
       <p class="note">選択週にない反復種別は独立したセッション例です。</p>
@@ -270,7 +272,7 @@ function renderPaces() {
 function renderTrainingGuides() {
   const { input, paces, settings } = model;
   const { pace, outOfRange, heartRate } = easyRunGuide(input.reference, settings.maxHr);
-  const referenceLabel = { five: '5 km実測', threshold: 'Riegel モデルによる推定5 km', prediction: 'COROS の5 kmレース予測' }[input.source];
+  const referenceLabel = { five: '5 km 入力タイム', threshold: 'Riegel モデルによる推定5 km' }[input.source];
   const easyNote = outOfRange ? '表 2.3 の対象範囲は5 kmタイム15:20〜30:00です。'
     : input.source === 'manual' ? 'ペースの目安を表示するには、5 kmタイム基準またはCOROS閾値ペース基準を選んでください。'
     : pace === null ? '選択した方式の入力がそろうと、ペースの目安が表示されます。' : '';
@@ -466,7 +468,7 @@ function refresh({ submitted = false, selectionChanged = false } = {}) {
     if (submitted && !model.input.issue && matchMedia('(max-width: 730px)').matches) $('paces').focus();
   } catch (error) {
     if (selectionChanged) {
-      const settings = { ...savedSettings, paceMode: form.elements.paceMode.value, corosSource: form.elements.corosSource.value };
+      const settings = { ...savedSettings, paceMode: form.elements.paceMode.value };
       store(settings);
     }
     const message = `${error.message} 練習計画は前回の計算結果を表示しています。`;
@@ -492,7 +494,7 @@ form.addEventListener('input', (event) => {
 });
 form.addEventListener('change', (event) => {
   syncForm();
-  refresh({ selectionChanged: ['paceMode', 'corosSource'].includes(event.target.name) });
+  refresh({ selectionChanged: event.target.name === 'paceMode' });
 });
 const alertWidths = $('alert-widths');
 function refreshAlertWidths(event) {

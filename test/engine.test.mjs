@@ -46,7 +46,7 @@ test('Riegel duration and exponent are independent settings', () => {
 });
 
 test('only the selected mode feeds the plan; comparison values never override it', () => {
-  const settings = cfg({ five: '20:00', coros: '4:50', corosPrediction: '22:40', pace3: '5:00', pace6: '5:10', pace10: '5:30' });
+  const settings = cfg({ five: '20:00', coros: '4:50', pace3: '5:00', pace6: '5:10', pace10: '5:30' });
   const actual = paceInputs(settings);
   assert.equal(actual.five, 1200);
   assert.equal(actual.coros, 290);
@@ -63,20 +63,25 @@ test('only the selected mode feeds the plan; comparison values never override it
   assert.equal(badComparison.paces[0].base, 254);
 });
 
-test('COROS race prediction uses the table directly and never falls back to Riegel', () => {
-  const settings = cfg({ paceMode: 'coros', corosSource: 'prediction', coros: '4:50', five: '20:00', corosPrediction: '22:40' });
-  const result = paceInputs(settings);
-  assert.equal(result.prediction, 1360);
+test('5 km mode accepts a race prediction through the normal time input', () => {
+  const result = paceInputs(cfg({ paceMode: 'five', five: '22:40', coros: '4:50' }));
+  assert.equal(result.reference, 1360);
   assert.equal(result.estimate, null);
   assert.deepEqual(result.paces.map(({ base }) => base), [286, 293, 303]);
-  assert.equal(paceInputs({ ...settings, corosPrediction: '' }).paces[0].base, null);
+});
+
+test('COROS mode estimates from the threshold even when old prediction settings are present', () => {
+  const result = paceInputs(cfg({ paceMode: 'coros', corosSource: 'prediction', corosPrediction: '22:40', five: '20:00', coros: '4:50' }));
+  assert.equal(result.source, 'threshold');
+  assert.equal(clock(result.reference), '22:53');
+  assert.deepEqual(result.paces.map(({ base }) => clock(base)), ['4:49', '4:56', '5:06']);
 });
 
 test('all tabulated sources decline times outside Table 1.4 without substituting comparison data', () => {
   for (const settings of [
     cfg({ five: '30:01', coros: '4:50' }),
     cfg({ paceMode: 'coros', coros: '7:30', five: '20:00' }),
-    cfg({ paceMode: 'coros', corosSource: 'prediction', corosPrediction: '14:59', five: '20:00' }),
+    cfg({ five: '14:59', coros: '4:50' }),
   ]) {
     const result = paceInputs(settings);
     assert.equal(result.outOfRange, true);
