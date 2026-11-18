@@ -19,7 +19,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 18px; }
 body { margin: 0; background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.55; }
 [hidden] { display: none !important; }
 a { color: inherit; }
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 button, summary, select { cursor: pointer; }
 :focus-visible { outline: 3px solid #308e6f; outline-offset: 3px; }
 .skip { position: absolute; z-index: 1; padding: 10px; background: white; transform: translateY(-150%); }
@@ -61,7 +61,8 @@ form > .field { margin-bottom: 15px; }
 .field small { font-size: .72rem; font-weight: 450; color: var(--muted); }
 .with-unit { display: flex; border: 1px solid #cad9d0; border-radius: 8px; background: #fafcf9; align-items: center; min-width: 0; }
 .with-unit:focus-within { outline: 2px solid var(--green); outline-offset: 1px; }
-input:not([type="checkbox"], [type="file"]), select { width: 100%; min-width: 0; border: 1px solid #cad9d0; border-radius: 8px; min-height: 40px; padding: 7px 9px; background: #fafcf9; }
+input:not([type="checkbox"], [type="file"]), select, textarea { width: 100%; min-width: 0; border: 1px solid #cad9d0; border-radius: 8px; min-height: 40px; padding: 7px 9px; background: #fafcf9; }
+textarea { resize: vertical; }
 .with-unit input { border: 0 !important; background: transparent !important; font-size: 1.02rem; font-variant-numeric: tabular-nums; }
 .with-unit input:focus-visible { outline: none; }
 .with-unit > span:last-child { white-space: nowrap; color: var(--muted); padding-right: 10px; font-size: .71rem; }
@@ -103,6 +104,7 @@ legend { font-size: .8rem; padding-right: 6px; font-weight: 750; color: var(--gr
 .week-select { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: .76rem; color: var(--muted); }
 .week-select select { min-height: 32px; padding-block: 3px; }
 .metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 5px 10px; margin: 0 0 12px; }
+.activity-metrics { grid-template-columns: repeat(5,minmax(0,1fr)); }
 .metrics div { border-bottom: 1px solid var(--line); padding: 0 0 9px; }
 .metrics dt { color: var(--muted); font-size: .72rem; }
 .metrics dd { margin: 1px 0 0; font-weight: 740; font-variant-numeric: tabular-nums; font-size: 1.05rem; }
@@ -116,6 +118,20 @@ legend { font-size: .8rem; padding-right: 6px; font-weight: 750; color: var(--gr
 .kind { display: block; font-weight: 750; font-size: .84rem; margin: 3px 0 1px; }
 .day-duration { font-size: .72rem; color: var(--muted); }
 .day-menu { font-size: .70rem; margin-top: 3px; }
+.cross-session { margin-top: 7px; padding: 5px 0 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.cross-session.cycling .kind { color: #265c74; }
+.cross-session.other .kind { color: #684467; }
+.cal-day.cross-only { background: #eef4f7; }
+.cross-only .day-label + .cross-session { border-top: 0; padding-top: 0; }
+.cross-note { white-space: pre-wrap; }
+.schedule-warning { border: 1px solid #e9d1b0; background: #fff7e9; border-radius: 8px; color: var(--amber); padding: 10px 12px; margin-top: 12px; font-size: .82rem; }
+.schedule-warning ul { margin: 5px 0; padding-inline-start: 21px; }
+.schedule-warning p { margin: 6px 0 8px; }
+.secondary { border: 1px solid #a9c7b9; border-radius: 7px; background: #fafcf9; color: var(--green); padding: 5px 10px; font-size: .8rem; font-weight: 680; }
+.secondary:hover:enabled { background: var(--light); }
+.secondary:disabled { opacity: .65; cursor: default; }
+#cycling-reference-output > .secondary { margin-top: 8px; }
+#cross-fields fieldset > .field-grid { margin-bottom: 8px; }
 .chart { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0,1fr); gap: clamp(3px,1vw,12px); height: 166px; margin: 4px 0 6px; background: repeating-linear-gradient(to top, transparent 0 32px, #edf1ed 32px 33px); }
 .chart button { display: flex; align-items: end; flex-direction: column; justify-content: end; gap: 3px; padding: 0; border: 0; min-width: 0; background: transparent; font-size: .65rem; font-variant-numeric: tabular-nums; }
 .chart button > b { display: block; align-self: center; font-weight: 550; }
@@ -159,6 +175,7 @@ thead th { background: var(--light); white-space: nowrap; }
   .control { padding: 17px 14px; }
   .pace-tile { padding: 8px; }
   .chart button > b { font-size: .58rem; }
+  .activity-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 360px) {
   .calendar { grid-template-columns: repeat(3,minmax(0,1fr)); }

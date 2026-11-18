@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 const files = new Map([
   ['index.html', 'text/html; charset=utf-8'],
   ['style.css', 'text/css; charset=utf-8'],
-  ...['app', 'engine', 'reference', 'coros'].map((file) => [`src/${file}.mjs`, 'text/javascript; charset=utf-8']),
+  ...['app', 'engine', 'reference', 'coros', 'cross-training'].map((file) => [`src/${file}.mjs`, 'text/javascript; charset=utf-8']),
 ]);
 const port = Number(process.env.SUB_T_PORT ?? 4173);
 const prefix = process.env.SUB_T_PREVIEW_PREFIX ?? '';

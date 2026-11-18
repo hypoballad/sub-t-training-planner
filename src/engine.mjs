@@ -1,5 +1,6 @@
 import { BOOK_WEEKS, ELEVATION, PACE_ROWS, REP_MINUTES, REST_DEFAULTS, WIND } from './reference.mjs';
 import { estimateCorosFiveK, RIEGEL_DEFAULTS } from './coros.mjs';
+import { CROSS_DEFAULTS, addCrossTraining, crossSchedule } from './cross-training.mjs';
 
 const DAY = 86400000;
 export const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
@@ -7,6 +8,7 @@ export const RACES = { general: '一般トレーニング', '5k': '5 km', '10k':
 export const PACE_MODES = { five: '5 km タイム基準', coros: 'COROS 閾値ペース基準', manual: '手動指定' };
 export const COROS_SOURCES = { threshold: '閾値ペースから推定', prediction: 'COROS の5 kmレース予測タイムを使用' };
 export const DEFAULTS = {
+  ...CROSS_DEFAULTS,
   paceMode: 'five', corosSource: 'threshold', five: '', coros: '', corosPrediction: '',
   riegelMinutes: RIEGEL_DEFAULTS.minutes, riegelExponent: RIEGEL_DEFAULTS.exponent,
   lthr: '', maxHr: '', hours: '', count: 7, easy: '', long: '', sessions: '',
@@ -143,10 +145,11 @@ export function session({ reps, rep, rest, warmup, cooldown, pace = null, easyPa
   const recovery = Math.max(0, reps - 1) * rest;
   const warmAndCool = (warmup + cooldown) * 60;
   const workDistance = pace ? sub / pace : null;
+  const repDistanceMeters = pace ? Math.round(rep * 60 / pace * 1000) : null;
   const distance = workDistance !== null && (!warmAndCool || easyPace) && (!recovery || jogPace)
     ? workDistance + (warmAndCool ? warmAndCool / easyPace : 0) + (recovery ? recovery / jogPace : 0)
     : null;
-  return { reps, rep, rest, warmup, cooldown, pace, sub, recovery, total: sub + recovery + warmAndCool, workDistance, distance };
+  return { reps, rep, rest, warmup, cooldown, pace, sub, recovery, total: sub + recovery + warmAndCool, repDistanceMeters, workDistance, distance };
 }
 
 const WORKOUT_DAYS = [1, 3, 5];
@@ -325,6 +328,7 @@ function taperDay(item, settings, daysToRace) {
 }
 
 export function trainingPlan(settings, today = localDate()) {
+  const cross = crossSchedule(settings);
   const requested = use(settings.weeks, settings.race === 'full' ? 15 : 12);
   const dated = settings.race !== 'general' && settings.ends !== '';
   const starts = dayNumber(settings.starts || today, '計画開始日');
@@ -373,5 +377,5 @@ export function trainingPlan(settings, today = localDate()) {
     if (changeRate > 0.10) plan.warnings.push('前週比が10%を超えています。アプリの確認目安です。');
     result.push({ ...plan, index: i + 1, phase, taper, recovery, change, changeRate, plannedTarget: target });
   }
-  return { weeks: result, warnings, sample: settings.hours === '', dated };
+  return { weeks: addCrossTraining(result, cross), warnings, sample: settings.hours === '', dated };
 }

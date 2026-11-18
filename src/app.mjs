@@ -1,5 +1,6 @@
 import { BOOK_WEEKS, REP_MINUTES } from './reference.mjs';
 import { COROS_SOURCES, DEFAULTS, PACE_MODES, RACES, WEEKDAYS, clock, environmentalPace, localDate, paceInputs, parseClock, session, trainingPlan } from './engine.mjs';
+import { CROSS_LABELS, CYCLING_MODES, CYCLING_WEEKS, INTENSITIES, CrossTrainingError, cyclingWatts } from './cross-training.mjs';
 
 const $ = (id) => document.getElementById(id);
 const form = $('planner-form');
@@ -12,10 +13,10 @@ const date = (name, label) => ({ name, label, type: 'date', full: true });
 const select = (name, label, values) => ({ name, label, values, type: 'select', full: true });
 const fields = [
   { title: '週間練習', fields: [
-    number('hours', '週間練習時間（h）', 4, 9, '例 5', 'any'), number('count', '練習日数', 4, 7),
+    number('hours', '週間ランニング時間（h）', 4, 9, '例 5', 'any'), number('count', 'ランニング日数', 4, 7),
     number('easy', 'Easy（分）', 10, 120), number('long', 'ロングラン（分）', 20, 180),
     number('sessions', 'Sub-T 回数', 0, 3),
-  ], days: true },
+  ], days: 'days' },
   { title: 'レースと期間', fields: [
     select('race', '目標レース', RACES), date('starts', '計画開始日'), date('ends', 'レース日'),
     number('weeks', '計画期間（週）', 8, 16, '12'),
@@ -45,20 +46,44 @@ const fields = [
     number('hill', '高低差（m/km）', 0, 400, '未設定', 'any'),
   ] },
 ];
+const crossFields = [
+  { title: 'サイクリング', fields: [
+    select('cyclingPlan', 'サイクリングの計画元', CYCLING_MODES),
+    number('cyclingFtp', 'FTP（W・任意）', 1, 2000, '例 200'),
+    { ...number('cyclingMinutes', '1回の時間（分）', 1, 600, '未登録'), condition: 'cycling-custom' },
+    { ...select('cyclingIntensity', '運動強度', INTENSITIES), condition: 'cycling-custom' },
+  ], days: 'cyclingDays', dayCondition: 'cycling-custom',
+  help: 'Week A・B はサイクリングの行を固定予定に追加します。<a href="#cycling-reference">書籍の週例とFTPの目安</a>' },
+  { title: 'その他のトレーニング', fields: [
+    number('otherMinutes', '1回の時間（分）', 1, 600, '未登録'),
+    number('otherFrequency', '週間実施回数', 0, 7, '曜日数'),
+    select('otherIntensity', '運動強度', INTENSITIES),
+    { name: 'otherNote', label: 'メモ（任意）', type: 'textarea', full: true },
+  ], days: 'otherDays', help: '1日1回。実施回数を指定する場合は選択曜日数とそろえてください。空欄なら自動で数えます。' },
+];
+const dayFields = ['days', 'cyclingDays', 'otherDays'];
+const conditional = (value) => value ? `data-condition="${value}"` : '';
 
-$('setting-fields').innerHTML = fields.map((group) => `
-  <fieldset ${group.condition ? `data-condition="${group.condition}"` : ''}><legend>${group.title}</legend>
+function renderFields(groups) {
+  return groups.map((group) => `
+  <fieldset ${conditional(group.condition)}><legend>${group.title}</legend>
   <div class="field-grid">${group.fields.map((item) => `
-    <label class="field ${item.full ? 'span' : ''}" ${item.condition ? `data-condition="${item.condition}"` : ''}>${item.label}
+    <label class="field ${item.full ? 'span' : ''}" ${conditional(item.condition)}>${item.label}
     ${item.type === 'select' ? `<select name="${item.name}">${options(item.values)}</select>` :
+      item.type === 'textarea' ? `<textarea name="${item.name}" rows="2" maxlength="300"></textarea>` :
       `<input name="${item.name}" type="${item.type}" placeholder="${item.placeholder ?? ''}"
         ${item.type === 'number' ? `min="${item.min}" max="${item.max}" step="${item.step}"` : ''}
         ${item.type === 'text' ? 'maxlength="9"' : ''}>`}
     </label>`).join('')}
-  ${group.days ? `<div class="span field"><span>練習可能な曜日</span><div class="checks">
-    ${WEEKDAYS.map((name, i) => `<label>${name}<input type="checkbox" name="days" value="${i}"></label>`).join('')}
-    </div><small>未選択で自動配置。指定する場合は練習日数と同じ数を選択。</small></div>` : ''}
+  ${group.days ? `<div class="span field" ${conditional(group.dayCondition)}><span>${group.days === 'days' ? '練習可能な曜日' : '実施曜日'}</span><div class="checks">
+    ${WEEKDAYS.map((name, i) => `<label>${name}<input type="checkbox" name="${group.days}" value="${i}"></label>`).join('')}
+    </div>${group.days === 'days' ? '<small>未選択で自動配置。指定する場合はランニング日数と同じ数を選択。</small>' : ''}</div>` : ''}
+  ${group.help ? `<p class="span note">${group.help}</p>` : ''}
   </div></fieldset>`).join('');
+}
+
+$('setting-fields').innerHTML = renderFields(fields);
+$('cross-fields').innerHTML = renderFields(crossFields);
 
 const descriptors = [
   select('paceMode', 'ペース計算方式', PACE_MODES),
@@ -67,7 +92,7 @@ const descriptors = [
   time('coros', 'COROS 閾値ペース'),
   time('corosPrediction', 'COROS の5 kmレース予測タイム'),
   ...REP_MINUTES.map((rep) => time(`pace${rep}`, `${rep}分反復ペース`)),
-  ...fields.flatMap((group) => group.fields),
+  ...[...fields, ...crossFields].flatMap((group) => group.fields),
 ];
 const parseOptionalPace = (value) => parseClock(value, { min: 2, max: 30, optional: true });
 
@@ -85,7 +110,7 @@ function clean(input) {
       }
     } else if (field.type === 'select') {
       if (!Object.hasOwn(field.values, value)) throw new Error(`${field.label}の設定を確認してください。`);
-    } else if (typeof value !== 'string' || value.length > (field.type === 'date' ? 10 : 9)) {
+    } else if (typeof value !== 'string' || value.length > ({ date: 10, textarea: 300 }[field.type] ?? 9)) {
       throw new Error(`${field.label}の形式を確認してください。`);
     }
     result[field.name] = typeof value === 'string' ? value.trim() : value;
@@ -94,10 +119,12 @@ function clean(input) {
     if (REP_MINUTES.every((rep) => result[`pace${rep}`])) result.paceMode = 'manual';
     else if (!result.five && result.coros) result.paceMode = 'coros';
   }
-  if (input.days !== undefined) {
-    if (!Array.isArray(input.days) || input.days.some((day) => !Number.isInteger(day) || day < 0 || day > 6)
-      || new Set(input.days).size !== input.days.length) throw new Error('練習曜日の設定を確認してください。');
-    result.days = input.days;
+  for (const name of dayFields) {
+    const days = input[name];
+    if (days === undefined) continue;
+    if (!Array.isArray(days) || days.some((day) => !Number.isInteger(day) || day < 0 || day > 6)
+      || new Set(days).size !== days.length) throw new Error('実施曜日の設定を確認してください。');
+    result[name] = days;
   }
   return result;
 }
@@ -108,15 +135,19 @@ function collect() {
   for (const { name, type } of descriptors) {
     if (type === 'number' && raw[name] !== undefined && raw[name] !== '') raw[name] = Number(raw[name]);
   }
-  raw.days = data.getAll('days').map(Number);
+  for (const name of dayFields) {
+    raw[name] = [...form.querySelectorAll(`[name="${name}"]:checked`)].map((item) => +item.value);
+  }
   return clean(raw);
 }
 
 function setFields(settings) {
   for (const [name, value] of Object.entries(settings)) {
-    if (name !== 'days') form.elements.namedItem(name).value = value;
+    if (!dayFields.includes(name)) form.elements.namedItem(name).value = value;
   }
-  for (const checkbox of form.querySelectorAll('[name="days"]')) checkbox.checked = settings.days.includes(+checkbox.value);
+  for (const name of dayFields) {
+    for (const checkbox of form.querySelectorAll(`[name="${name}"]`)) checkbox.checked = settings[name].includes(+checkbox.value);
+  }
   syncForm();
 }
 
@@ -131,9 +162,12 @@ function syncForm() {
   $('manual-pace-fields').hidden = paceMode !== 'manual';
   $('five-help').textContent = paceMode === 'five' ? '最近の走力を反映した記録' : '比較用（任意）';
   $('coros-help').textContent = isCoros && !usesPrediction ? 'Riegel モデルで5 kmタイムを推定' : '比較用（任意）';
+  const visible = { full: isFull, custom: isCustom, 'cycling-custom': form.elements.cyclingPlan.value === 'custom' };
   for (const element of form.querySelectorAll('[data-condition]')) {
-    element.hidden = element.dataset.condition === 'full' ? !isFull : !isCustom;
-    for (const input of element.querySelectorAll('input,select')) input.disabled = element.hidden;
+    element.hidden = !visible[element.dataset.condition];
+    if (element.dataset.condition !== 'cycling-custom') {
+      for (const input of element.querySelectorAll('input,select')) input.disabled = element.hidden;
+    }
   }
   form.elements.weeks.placeholder = isFull ? '15' : '12';
   form.elements.starts.setAttribute('aria-description', `空欄の場合は今日（${localDate()}）`);
@@ -149,8 +183,13 @@ const min = (value) => value % 60 ? `${Math.floor(value / 60)}分${value % 60}�
 const deltaLabel = (value) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${min(Math.abs(value))}`;
 const rate = (value) => value === null ? '—' : `${value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
 const distance = (value) => value === null ? '—' : `${value.toFixed(2)} km`;
+const escapeText = (value) => value.replace(/[&<>]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[character]));
 const notes = (messages = []) => [...new Set(messages)].map((message) => `<p class="note warning">${message}</p>`).join('');
-const kindName = { easy: 'Easy', long: 'ロング', sub: 'Sub-T', rest: '休養', outside: '期間外', race: 'レース' };
+const kindName = { easy: 'Easy', long: 'Long Run', sub: 'Sub-T', rest: 'Rest', outside: '期間外', race: 'レース', ...CROSS_LABELS };
+const shortDate = (date) => date.slice(5).replace('-', '/');
+const powerLabel = (activity) => activity.ftp
+  ? `${activity.ftp.join('〜')}% FTP${activity.watts ? `（${activity.watts.join('〜')} W）` : ''}` : '';
+const intervalLabel = (activity) => activity.reps ? `${activity.reps} × ${activity.repMinutes}分・間の休息 ${min(activity.rest)}` : '';
 
 let model;
 let selectedWeek = 0;
@@ -217,12 +256,13 @@ function renderPaces() {
     <details class="data"${detailsOpen ? ' open' : ''}><summary>おすすめインターバルと所要時間</summary>
       <p class="note">選択週にない反復種別は独立したセッション例です。</p>
       <div class="table-wrap"><table>
-        <thead><tr><th scope="col">反復</th><th scope="col">ペース</th><th scope="col">間の休息</th><th scope="col">Sub-T</th><th scope="col">総時間</th><th scope="col">反復距離</th><th scope="col">全体距離</th></tr></thead>
+        <thead><tr><th scope="col">反復</th><th scope="col">ペース</th><th scope="col">1rep距離</th><th scope="col">間の休息</th><th scope="col">Sub-T</th><th scope="col">総時間</th><th scope="col">Sub-T合計距離</th><th scope="col">全体距離</th></tr></thead>
         <tbody>${examples.map((item) => `<tr><th scope="row">${item.reps} × ${item.rep}分</th><td>${paceLabel(item.pace)}</td>
+        <td>${item.repDistanceMeters === null ? '—' : `${item.repDistanceMeters} m`}</td>
         <td>${item.reps > 1 ? `${item.rest}秒` : '—'}</td><td>${min(item.sub)}</td><td>${min(item.total)}</td>
         <td>${distance(item.workDistance)}</td><td>${distance(item.distance)}</td></tr>`).join('')}</tbody>
       </table></div>
-      <p class="note">WU ${settings.warmup}分・CD ${settings.cooldown}分。反復距離は反復の合計です。</p>
+      <p class="note">WU ${settings.warmup}分・CD ${settings.cooldown}分。</p>
       ${paces.filter((pace) => pace.changes.length).map((pace) => `<p class="note">${pace.rep}分反復　${pace.changes.map(({ label, delta }) => `${label} ${delta >= 0 ? '+' : ''}${delta.toFixed(1)}秒/km`).join(' ／ ')}</p>`).join('')}
     </details>`;
 }
@@ -232,25 +272,49 @@ function renderWeek() {
   const week = plan.weeks[selectedWeek];
   const sub = week.total ? +(week.sub / week.total * 100).toFixed(1) : 0;
   const easy = week.total ? +(100 - sub).toFixed(1) : 0;
+  const { activity } = week;
+  const subCount = week.calendar.filter((day) => day.kind === 'sub').length;
   $('week-picker').value = selectedWeek;
   $('calendar-output').innerHTML = `
-    <dl class="metrics">
-      <div><dt>練習合計</dt><dd>${min(week.total)}</dd></div>
-      <div><dt>Easy / Sub-T</dt><dd>${easy}% / ${sub}%</dd></div>
-      <div><dt>ロングラン</dt><dd>${min(week.long)}</dd></div>
-      <div><dt>休養</dt><dd>${week.rest} 日</dd></div>
+    <dl class="metrics activity-metrics">
+      <div><dt>ランニング</dt><dd>${min(activity.running)}</dd></div>
+      <div><dt>サイクリング</dt><dd>${min(activity.cycling)}</dd></div>
+      <div><dt>その他のトレーニング</dt><dd>${min(activity.other)}</dd></div>
+      <div><dt>全運動時間</dt><dd>${min(activity.total)}</dd></div>
+      <div><dt>高強度（クロストレーニング）</dt><dd>${activity.high} 回</dd></div>
     </dl>
-    <ol class="calendar">${week.calendar.map((item) => `<li class="cal-day ${item.kind}">
-      <div class="day-label">${item.date.slice(5).replace('-', '/')}（${WEEKDAYS[item.day]}）</div>
-      <strong class="kind">${kindName[item.kind]}</strong>
+    <dl class="metrics">
+      <div><dt>Easy / Sub-T（ランニング）</dt><dd>${easy}% / ${sub}%</dd></div>
+      <div><dt>Sub-T 回数</dt><dd>${subCount} 回</dd></div>
+      <div><dt>ロングラン</dt><dd>${min(week.long)}</dd></div>
+      <div><dt>休養</dt><dd>${activity.rest} 日</dd></div>
+    </dl>
+    <ol class="calendar">${week.calendar.map((item) => `<li class="cal-day ${item.kind === 'rest' && item.cross.length ? 'cross-only' : item.kind}">
+      <div class="day-label">${shortDate(item.date)}（${WEEKDAYS[item.day]}）</div>
+      ${item.kind === 'rest' && item.cross.length ? '' : `<strong class="kind">${kindName[item.kind]}</strong>`}
       ${item.total ? `<div class="day-duration">${min(item.total)}</div>` : ''}
       ${item.kind === 'sub' ? `<div class="day-menu">${item.reps} × ${item.rep}分${item.pace ? `<br>${paceLabel(item.pace)}` : ''}</div>` : ''}
       ${item.double ? `<div class="day-menu">朝 ${min(Math.floor(item.total / 120) * 60)}<br>夕 ${min(item.total - Math.floor(item.total / 120) * 60)}</div>` : ''}
       ${item.kind === 'race' ? `<div class="day-menu">${RACES[settings.race]}</div>` : ''}
+      ${item.cross.map((extra) => `<div class="cross-session ${extra.kind}">
+        <strong class="kind">${kindName[extra.kind]}</strong>
+        <div class="day-duration">${min(extra.total)} · 強度 ${INTENSITIES[extra.intensity]}</div>
+        ${extra.reps ? `<div class="day-menu">${intervalLabel(extra)}</div>` : ''}
+        ${extra.ftp ? `<div class="day-menu">${powerLabel(extra)}</div>` : ''}
+        ${extra.note ? `<div class="day-menu cross-note">${escapeText(extra.note)}</div>` : ''}
+      </div>`).join('')}
     </li>`).join('')}</ol>
-    <p class="note">${plan.sample ? 'サンプル（開始時の週間練習量を5時間と仮定）' : '入力した週間練習量を起点に作成'} · アプリ自動計画（表 ${week.table} 参照）</p>
-    <p class="note">${week.phase}${week.change === null ? '' : ` · 前週比 ${deltaLabel(week.change)}（${rate(week.changeRate)}）`}
+    <p class="note">${plan.sample ? 'サンプル（開始時の週間ランニング時間を5時間と仮定）' : '入力した週間ランニング時間を起点に作成'} · アプリ自動計画（表 ${week.table} 参照）</p>
+    <p class="note">${week.phase}${week.change === null ? '' : ` · ランニング時間の前週比 ${deltaLabel(week.change)}（${rate(week.changeRate)}）`}
       ${week.shortfall ? ` · 目標 ${min(week.target)}、未配分 ${min(week.shortfall)}` : ''}</p>
+    ${activity.conflicts.length ? `<div class="schedule-warning">
+      <strong>高強度の予定と Sub-T が接近しています</strong>
+      <ul>${activity.conflicts.map(({ crossDate, kind, subDate, sameDay }) =>
+        `<li>${shortDate(crossDate)} の ${kindName[kind]} と ${shortDate(subDate)} の Sub-T が${sameDay ? '同日' : '連続日'}</li>`).join('')}</ul>
+      ${subCount ? `<p>代替案として Sub-T を週${subCount - 1}回に設定できます。設定後のカレンダーで競合を確認してください。</p>
+        <button class="secondary" type="button" data-reduce-sub="${subCount - 1}">Sub-T を週${subCount - 1}回に設定</button>`
+        : '<p>前後の週の Sub-T または固定予定を確認してください。</p>'}
+    </div>` : ''}
     ${notes(week.warnings)}`;
 }
 
@@ -260,19 +324,20 @@ function renderProgress() {
   const max = Math.max(60, ...plan.weeks.map((week) => week.total));
   const chart = plan.weeks.map((week, i) => {
     const bars = ['total', 'sub', 'long'].map((key) => `<i aria-hidden="true" class="bar ${key}-bar" style="height:${week[key] / max * 100}%"></i>`).join('');
-    const detail = `第${week.index}週 ${week.phase}　合計 ${min(week.total)}、Sub-T ${min(week.sub)}、ロング ${min(week.long)}`;
+    const detail = `第${week.index}週 ${week.phase}　ランニング ${min(week.total)}、Sub-T ${min(week.sub)}、ロング ${min(week.long)}`;
     return `<button type="button" data-week="${i}" ${week.taper ? 'data-taper' : ''} title="${detail}" aria-label="${detail}" aria-pressed="${selectedWeek === i}"><span class="columns">${bars}</span><b>${week.index}</b></button>`;
   }).join('');
   $('progress-output').innerHTML = `
     <p class="note">${RACES[settings.race]} · ${plan.weeks.length}週 · ${plan.dated ? `レース日 ${settings.ends}` : '日程サンプル'}</p>
-    <div class="chart" role="group" aria-label="練習時間の推移。週を選択すると週間プランが切り替わります。">${chart}</div>
-    <div class="legend"><span><i class="total-bar"></i>総時間</span><span><i class="sub-bar"></i>Sub-T</span><span><i class="long-bar"></i>ロングラン</span>${plan.weeks.some((week) => week.taper) ? '<span><i class="taper-bar"></i>テーパリング</span>' : ''}</div>
+    <div class="chart" role="group" aria-label="ランニング時間の推移。週を選択すると週間プランが切り替わります。">${chart}</div>
+    <div class="legend"><span><i class="total-bar"></i>ランニング</span><span><i class="sub-bar"></i>Sub-T</span><span><i class="long-bar"></i>ロングラン</span>${plan.weeks.some((week) => week.taper) ? '<span><i class="taper-bar"></i>テーパリング</span>' : ''}</div>
     ${notes(plan.warnings)}
     <details class="data"${detailsOpen ? ' open' : ''}><summary>週ごとの時間と増加ポイント</summary>
-      <div class="table-wrap"><table><thead><tr><th scope="col">週</th><th scope="col">期間</th><th scope="col">総時間</th><th scope="col">Sub-T</th><th scope="col">ロング</th><th scope="col">前週比</th><th scope="col">フェーズ</th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th scope="col">週</th><th scope="col">期間</th><th scope="col">ランニング</th><th scope="col">Sub-T</th><th scope="col">ロング</th><th scope="col">前週比</th><th scope="col">フェーズ</th><th scope="col">Cycling</th><th scope="col">その他</th><th scope="col">全運動時間</th></tr></thead>
       <tbody>${plan.weeks.map((week) => `<tr><th scope="row">${week.index}</th><td>${week.calendar.find((item) => item.kind !== 'outside').date}〜${week.calendar.at(-1).date.slice(5)}</td>
         <td>${min(week.total)}</td><td>${min(week.sub)}</td><td>${min(week.long)}</td><td>${week.change === null ? '—' : `${deltaLabel(week.change)}（${rate(week.changeRate)}）`}</td>
-        <td>${week.phase}${week.changeRate > 0.10 ? ' · 増加幅を確認' : ''}</td></tr>`).join('')}</tbody></table></div></details>`;
+        <td>${week.phase}${week.changeRate > 0.10 ? ' · 増加幅を確認' : ''}</td>
+        <td>${min(week.activity.cycling)}</td><td>${min(week.activity.other)}</td><td>${min(week.activity.total)}</td></tr>`).join('')}</tbody></table></div></details>`;
 }
 
 function show() {
@@ -281,6 +346,7 @@ function show() {
   renderPaces();
   renderWeek();
   renderProgress();
+  renderCyclingReference();
 }
 
 function selectWeek(index) {
@@ -303,6 +369,32 @@ function renderBook(index) {
       return `<tr><th scope="row">${name}</th><td>${label}</td><td>${week.minutes[i] || '—'}</td></tr>`;
     }).join('')}</tbody></table></div>
     <p class="note">時間は表の記載値です。週タイトルの目安と日別時間の合計は異なる場合があります。</p>`;
+}
+
+function renderCyclingReference() {
+  const key = $('cycling-reference-picker').value;
+  const reference = CYCLING_WEEKS[key];
+  const { cyclingFtp, cyclingPlan } = model.settings;
+  $('cycling-reference-output').innerHTML = `
+    <p>Cross Training 章 · 表 ${reference.table} · ${reference.name}</p>
+    <div class="table-wrap"><table>
+    <thead><tr><th scope="col">曜日</th><th scope="col">メニュー</th><th scope="col">掲載時間</th><th scope="col">内容</th></tr></thead>
+    <tbody>${reference.days.map((day, index) => {
+      const watts = cyclingWatts(day.ftp, cyclingFtp);
+      const detail = day.kind === 'cycling' ? [intervalLabel(day), powerLabel({ ...day, watts })].filter(Boolean).join(' · ')
+        : day.reps ? `${day.reps} × ${day.repMinutes}分（掲載時間は WU・CD 込み）` : '—';
+      return `<tr><th scope="row">${WEEKDAYS[index]}</th><td>${kindName[day.kind]}</td><td>${day.minutes}分</td><td>${detail}</td></tr>`;
+    }).join('')}</tbody>
+    </table></div>
+    <p>適用すると、サイクリングの行を毎週の固定予定に追加します。サイクリングのインターバルは日程の確認上「高」として扱います。</p>
+    <button class="secondary" type="button" data-cycle-week="${key}" ${cyclingPlan === key ? 'disabled' : ''}>${cyclingPlan === key ? '週間プランに適用済み' : `${reference.name} のサイクリングを追加`}</button>`;
+}
+
+function renderEasyBikeRange() {
+  const input = $('easy-bike-minutes');
+  const minutes = input.valueAsNumber;
+  $('easy-bike-range').textContent = !Number.isFinite(minutes) || !input.validity.valid ? ''
+    : `書籍の時間の目安　サイクリング 約${Math.round(minutes * 1.2)}〜${Math.round(minutes * 1.3)}分`;
 }
 
 function store(settings) {
@@ -328,6 +420,7 @@ function refresh({ submitted = false, selectionChanged = false } = {}) {
     const settings = collect();
     model = calculate(settings);
     show();
+    $('cross-message').textContent = '';
     const saved = store(settings);
     if (submitted && model.input.issue) announce(model.input.issue, true);
     else if (!saved) announce('ブラウザの保存を利用できません。', true);
@@ -338,7 +431,9 @@ function refresh({ submitted = false, selectionChanged = false } = {}) {
       const settings = { ...savedSettings, paceMode: form.elements.paceMode.value, corosSource: form.elements.corosSource.value };
       store(settings);
     }
-    announce(`${error.message} 練習計画は前回の計算結果を表示しています。`, true);
+    const message = `${error.message} 練習計画は前回の計算結果を表示しています。`;
+    $('cross-message').textContent = error instanceof CrossTrainingError ? message : '';
+    announce(error instanceof CrossTrainingError && $('cross-settings').open ? '' : message, true);
   }
 }
 
@@ -353,7 +448,7 @@ form.addEventListener('invalid', (event) => {
   if (details) details.open = true;
 }, true);
 form.addEventListener('input', (event) => {
-  if (!event.target.matches('input[type="text"], input[type="number"]')) return;
+  if (!event.target.matches('input[type="text"], input[type="number"], textarea')) return;
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => refresh(), 180);
 });
@@ -366,10 +461,32 @@ $('progress-output').addEventListener('click', (event) => {
   const button = event.target.closest('[data-week]');
   if (button) selectWeek(+button.dataset.week);
 });
+$('calendar-output').addEventListener('click', (event) => {
+  const option = event.target.closest('[data-reduce-sub]');
+  if (!option) return;
+  form.elements.sessions.value = option.dataset.reduceSub;
+  refresh();
+  const settings = $('setting-fields').closest('details');
+  settings.open = true;
+  form.elements.sessions.focus();
+});
 $('book-picker').replaceChildren(...BOOK_WEEKS.map((week, i) => new Option(week.label, i)));
 $('book-picker').value = 1;
 $('book-picker').addEventListener('change', (event) => renderBook(+event.target.value));
 renderBook(1);
+$('cycling-reference-picker').replaceChildren(...Object.entries(CYCLING_WEEKS).map(([key, week]) => new Option(week.name, key)));
+$('cycling-reference-picker').addEventListener('change', renderCyclingReference);
+$('cycling-reference-output').addEventListener('click', (event) => {
+  const option = event.target.closest('[data-cycle-week]');
+  if (!option) return;
+  form.elements.cyclingPlan.value = option.dataset.cycleWeek;
+  syncForm();
+  refresh();
+  $('cross-settings').open = true;
+  form.elements.cyclingPlan.focus();
+});
+$('easy-bike-minutes').addEventListener('input', renderEasyBikeRange);
+renderEasyBikeRange();
 
 $('json-out').addEventListener('click', () => {
   try {
@@ -393,6 +510,7 @@ $('upload').addEventListener('change', async (event) => {
     model = updated;
     selectedWeek = 0;
     show();
+    $('cross-message').textContent = '';
     announce(store(settings) ? '設定を読み込んで保存しました。' : '設定を読み込みました。ブラウザの保存を利用できません。');
   } catch (error) {
     announce(`読み込めませんでした。 ${error instanceof SyntaxError ? 'JSON を確認してください。' : error.message}`, true);
@@ -412,20 +530,42 @@ $('reset').addEventListener('click', () => {
   model = calculate(DEFAULTS);
   selectedWeek = 0;
   show();
+  $('cross-message').textContent = '';
   announce('設定を初期化しました。');
 });
+
+function csvCell(value) {
+  if (typeof value !== 'string') return value;
+  if (/^[\s\uFEFF]*[=+@-]|^[\t\r\n]/.test(value)) value = "'" + value;
+  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+}
+
 $('csv').addEventListener('click', () => {
-  const rows = [['週', '日付', '曜日', 'フェーズ', 'メニュー', '所要秒', 'Sub-T秒', 'ロングラン秒', '反復回数', '1反復分', '休息秒', 'ペース秒/km', '週間合計秒', '前週差秒', '前週比%']];
+  const rows = [[
+    '週', '日付', '曜日', 'フェーズ', 'メニュー', '所要秒', 'Sub-T秒', 'ロングラン秒', '反復回数', '1反復分', '休息秒', 'ペース秒/km', '週間ランニング秒', '前週差秒', '前週比%',
+    'クロストレーニング強度', 'メモ', 'FTP(W)', '目標FTP下限%', '目標FTP上限%', '目標W下限', '目標W上限', 'サイクリングの参考週',
+    '週間サイクリング秒', '週間その他秒', '週間全運動秒', '週間クロストレーニング高強度回数',
+  ]];
   for (const week of model.plan.weeks) {
+    const weekTail = [week.total, week.change ?? '', week.changeRate === null ? '' : Number((week.changeRate * 100).toFixed(1))];
+    const { cycling, other, total, high } = week.activity;
+    const totals = [cycling, other, total, high];
     for (const day of week.calendar.filter((item) => item.kind !== 'outside')) {
+      const start = [week.index, day.date, WEEKDAYS[day.day], week.phase];
       const sub = day.kind === 'sub';
-      rows.push([week.index, day.date, WEEKDAYS[day.day], week.phase, kindName[day.kind], day.total, day.sub ?? 0,
-        day.long ?? 0, sub ? day.reps : '', sub ? day.rep : '', sub ? day.rest : '',
-        sub && day.pace ? Math.round(day.pace) : '', week.total, week.change ?? '',
-        week.changeRate === null ? '' : (week.changeRate * 100).toFixed(1)]);
+      if (day.kind !== 'rest' || !day.cross.length) {
+        rows.push([...start, kindName[day.kind], day.total, day.sub ?? 0, day.long ?? 0, sub ? day.reps : '',
+          sub ? day.rep : '', sub ? day.rest : '', sub && day.pace ? Math.round(day.pace) : '',
+          ...weekTail, '', '', '', '', '', '', '', '', ...totals]);
+      }
+      for (const extra of day.cross) {
+        rows.push([...start, kindName[extra.kind], extra.total, 0, 0, extra.reps ?? '', extra.repMinutes ?? '', extra.rest ?? '', '',
+          ...weekTail, INTENSITIES[extra.intensity], extra.note ?? '', extra.kind === 'cycling' ? model.settings.cyclingFtp : '',
+          ...(extra.ftp ?? ['', '']), ...(extra.watts ?? ['', '']), extra.source ?? '', ...totals]);
+      }
     }
   }
-  download('sub-t-training-plan.csv', '\ufeff' + rows.map((row) => row.join(',')).join('\r\n'), 'text/csv;charset=utf-8');
+  download('sub-t-training-plan.csv', '\ufeff' + rows.map((row) => row.map(csvCell).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
 });
 $('print').addEventListener('click', () => {
   const closed = [...document.querySelectorAll('.results details:not([open])')];

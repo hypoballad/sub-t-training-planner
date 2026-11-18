@@ -115,6 +115,15 @@ test('calculate distance using separate paces for the workout portions', () => {
   assert.equal(session({ ...args, easyPace: 300, jogPace: 360 }).distance, 3.5 + 1 / 6);
 });
 
+test('measure one rep in metres using the unrounded internal pace', () => {
+  const { paces } = paceInputs(cfg({ paceMode: 'coros', coros: '4:50' }));
+  const intervals = paces.map(({ rep, base }) => session({ rep, pace: base, reps: 3, rest: 60, warmup: 10, cooldown: 10 }));
+  assert.deepEqual(intervals.map(({ repDistanceMeters }) => repDistanceMeters), [624, 1218, 1963]);
+  assert.equal(intervals[0].workDistance, 540 / paces[0].base);
+  assert.equal(intervals[0].total, 1860);
+  assert.equal(session({ reps: 3, rep: 3, rest: 60, warmup: 10, cooldown: 10 }).repDistanceMeters, null);
+});
+
 test('environment uses the image data, then heat and dew-point adjustment', () => {
   const result = environmentalPace(240, cfg({ hill: 10, hillType: 'uphill', wind: 15, windType: 'head', temp: 17, dew: 16 }));
   assert.deepEqual(result.changes.slice(0, 2).map(({ delta }) => delta), [12, 20]);

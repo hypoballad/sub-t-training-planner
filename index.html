@@ -72,6 +72,11 @@
             <summary>詳細設定</summary>
             <div id="setting-fields"></div>
           </details>
+          <details class="settings" id="cross-settings">
+            <summary>クロストレーニング</summary>
+            <div id="cross-fields"></div>
+            <p id="cross-message" class="form-message error" role="status"></p>
+          </details>
         </form>
         <div class="storage">
           <span class="storage-dot" aria-hidden="true"></span> 入力はこのブラウザに保存
@@ -102,6 +107,14 @@
     <section class="panel reference" id="references" aria-labelledby="ref-heading">
       <div class="section-head"><div><p class="eyebrow">METHOD</p><h2 id="ref-heading">書籍・計算の根拠</h2></div></div>
       <details><summary>書籍の週例を見る</summary><label class="field book-select">週例<select id="book-picker"></select></label><div id="book-output"></div></details>
+      <details id="cycling-reference">
+        <summary>サイクリングの Week A・Week B と強度の目安</summary>
+        <label class="field book-select">書籍の参考プラン<select id="cycling-reference-picker"></select></label>
+        <div id="cycling-reference-output"></div>
+        <p>Cross Training 章の目安は、ランニングを全運動時間の60%以上、サイクリングなどを40%以下とする配分です。Easy を自転車に置き換える際は所要時間を20〜30%延ばす例が示されています。参考範囲の計算は、週間計画の時間や負荷に影響しません。</p>
+        <label class="field book-select">置き換え前の Easy（分）<input type="number" id="easy-bike-minutes" min="1" max="300" value="60"></label>
+        <p id="easy-bike-range" aria-live="polite"></p>
+      </details>
       <details><summary>ペースとセッションの計算</summary>
         <p>5 km の実測タイム、Riegel モデルで推定した5 kmタイム、または COROS の5 kmレース予測タイムを、選択した方式に応じて表 1.4（15:00〜30:00）に当てはめます。隣接行を秒単位で線形補間し、表示時に丸めます。手動指定では、入力した3・6・10分反復のペースを使います。</p>
         <p>COROS 閾値ペースからの推定は、持続時間を <var>T</var> 秒、閾値ペースを <var>P</var> 秒/km、指数を <var>k</var> とし、<var>D</var>＝<var>T</var>÷<var>P</var>、推定5 kmタイム＝<var>T</var>×(5÷<var>D</var>)<sup><var>k</var></sup> で計算します。初期値は60分と1.06です。詳細設定から調整できます。</p>
