@@ -47,14 +47,14 @@ const fields = [
   ] },
 ];
 const crossFields = [
-  { title: 'サイクリング', fields: [
+  { title: 'サイクリング', enabled: 'cyclingEnabled', fields: [
     select('cyclingPlan', 'サイクリングの計画元', CYCLING_MODES),
     number('cyclingFtp', 'FTP（W・任意）', 1, 2000, '例 200'),
     { ...number('cyclingMinutes', '1回の時間（分）', 1, 600, '未登録'), condition: 'cycling-custom' },
     { ...select('cyclingIntensity', '運動強度', INTENSITIES), condition: 'cycling-custom' },
   ], days: 'cyclingDays', dayCondition: 'cycling-custom',
   help: 'Week A・B はサイクリングの行を固定予定に追加します。<a href="#cycling-reference">書籍の週例とFTPの目安</a>' },
-  { title: 'その他のトレーニング', fields: [
+  { title: 'その他のトレーニング', enabled: 'otherEnabled', fields: [
     number('otherMinutes', '1回の時間（分）', 1, 600, '未登録'),
     number('otherFrequency', '週間実施回数', 0, 7, '曜日数'),
     select('otherIntensity', '運動強度', INTENSITIES),
@@ -67,7 +67,8 @@ const conditional = (value) => value ? `data-condition="${value}"` : '';
 function renderFields(groups) {
   return groups.map((group) => `
   <fieldset ${conditional(group.condition)}><legend>${group.title}</legend>
-  <div class="field-grid">${group.fields.map((item) => `
+  ${group.enabled ? `<label class="cross-toggle"><input type="checkbox" name="${group.enabled}"> ${group.title}を計画に含める</label>` : ''}
+  <div class="field-grid" ${group.enabled ? `data-cross-fields="${group.enabled}"` : ''}>${group.fields.map((item) => `
     <label class="field ${item.full ? 'span' : ''}" ${conditional(item.condition)}>${item.label}
     ${item.type === 'select' ? `<select name="${item.name}">${options(item.values)}</select>` :
       item.type === 'textarea' ? `<textarea name="${item.name}" rows="2" maxlength="300"></textarea>` :
@@ -92,26 +93,38 @@ const descriptors = [
   number('alertFast', '速い側の許容幅（秒/km）', 0, 60, '5', 'any'),
   number('alertSlow', '遅い側の許容幅（秒/km）', 0, 60, '10', 'any'),
   ...REP_MINUTES.map((rep) => time(`pace${rep}`, `${rep}分反復ペース`)),
-  ...[...fields, ...crossFields].flatMap((group) => group.fields),
+  ...fields.flatMap((group) => group.fields),
+  ...crossFields.flatMap((group) => group.fields.map((field) => ({ ...field, enabled: group.enabled }))),
 ];
 const parseOptionalPace = (value) => parseClock(value, { min: 2, max: 30, optional: true });
 
-function clean(input) {
+function clean(input, fallback = DEFAULTS) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('設定の形式を確認してください。');
   const result = { ...DEFAULTS };
+  for (const { enabled } of crossFields) {
+    if (input[enabled] === undefined) continue;
+    if (typeof input[enabled] !== 'boolean') throw new Error('クロストレーニングの有効設定を確認してください。');
+    result[enabled] = input[enabled];
+  }
   for (const field of descriptors) {
     const value = input[field.name];
     if (value === undefined) continue;
+    let issue = '';
     if (field.type === 'number') {
       if (value === '') continue;
       if (typeof value !== 'number' || !Number.isFinite(value) || value < field.min || value > field.max
         || (field.step === '1' && !Number.isInteger(value))) {
-        throw new Error(`${field.label}　${field.min}〜${field.max} の範囲で入力してください。`);
+        issue = `${field.label}　${field.min}〜${field.max} の範囲で入力してください。`;
       }
     } else if (field.type === 'select') {
-      if (!Object.hasOwn(field.values, value)) throw new Error(`${field.label}の設定を確認してください。`);
+      if (!Object.hasOwn(field.values, value)) issue = `${field.label}の設定を確認してください。`;
     } else if (typeof value !== 'string' || value.length > ({ date: 10, textarea: 300 }[field.type] ?? 9)) {
-      throw new Error(`${field.label}の形式を確認してください。`);
+      issue = `${field.label}の形式を確認してください。`;
+    }
+    if (issue) {
+      if (!field.enabled || result[field.enabled]) throw new Error(issue);
+      result[field.name] = fallback[field.name];
+      continue;
     }
     result[field.name] = typeof value === 'string' ? value.trim() : value;
   }
@@ -142,18 +155,25 @@ function clean(input) {
 function collect() {
   const data = new FormData(form);
   const raw = Object.fromEntries(data.entries());
+  for (const { enabled, fields: activityFields } of crossFields) {
+    raw[enabled] = form.elements[enabled].checked;
+    if (!raw[enabled]) {
+      for (const { name } of activityFields) raw[name] = form.elements[name].value;
+    }
+  }
   for (const { name, type } of descriptors) {
     if (type === 'number' && raw[name] !== undefined && raw[name] !== '') raw[name] = Number(raw[name]);
   }
   for (const name of dayFields) {
     raw[name] = [...form.querySelectorAll(`[name="${name}"]:checked`)].map((item) => +item.value);
   }
-  return clean(raw);
+  return clean(raw, savedSettings);
 }
 
 function setFields(settings) {
   for (const [name, value] of Object.entries(settings)) {
-    if (!dayFields.includes(name)) form.elements.namedItem(name).value = value;
+    if (typeof value === 'boolean') form.elements.namedItem(name).checked = value;
+    else if (!dayFields.includes(name)) form.elements.namedItem(name).value = value;
   }
   for (const name of dayFields) {
     for (const checkbox of form.querySelectorAll(`[name="${name}"]`)) checkbox.checked = settings[name].includes(+checkbox.value);
@@ -175,6 +195,10 @@ function syncForm() {
     if (element.dataset.condition !== 'cycling-custom') {
       for (const input of element.querySelectorAll('input,select')) input.disabled = element.hidden;
     }
+  }
+  for (const group of form.querySelectorAll('[data-cross-fields]')) {
+    group.hidden = !form.elements[group.dataset.crossFields].checked;
+    for (const field of group.querySelectorAll('input,select,textarea')) field.disabled = group.hidden;
   }
   form.elements.weeks.placeholder = isFull ? '15' : '12';
   form.elements.starts.setAttribute('aria-description', `空欄の場合は今日（${localDate()}）`);
@@ -414,7 +438,8 @@ function renderBook(index) {
 function renderCyclingReference() {
   const key = $('cycling-reference-picker').value;
   const reference = CYCLING_WEEKS[key];
-  const { cyclingFtp, cyclingPlan } = model.settings;
+  const { cyclingEnabled, cyclingFtp, cyclingPlan } = model.settings;
+  const referenceApplied = cyclingEnabled && cyclingPlan === key;
   $('cycling-reference-output').innerHTML = `
     <p>Cross Training 章 · 表 ${reference.table} · ${reference.name}</p>
     <div class="table-wrap"><table>
@@ -427,7 +452,7 @@ function renderCyclingReference() {
     }).join('')}</tbody>
     </table></div>
     <p>適用すると、サイクリングの行を毎週の固定予定に追加します。サイクリングのインターバルは日程の確認上「高」として扱います。</p>
-    <button class="secondary" type="button" data-cycle-week="${key}" ${cyclingPlan === key ? 'disabled' : ''}>${cyclingPlan === key ? '週間プランに適用済み' : `${reference.name} のサイクリングを追加`}</button>`;
+    <button class="secondary" type="button" data-cycle-week="${key}" ${referenceApplied ? 'disabled' : ''}>${referenceApplied ? '週間プランに適用済み' : `${reference.name} のサイクリングを追加`}</button>`;
 }
 
 function renderEasyBikeRange() {
@@ -454,7 +479,7 @@ function download(name, contents, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function refresh({ submitted = false, selectionChanged = false } = {}) {
+function refresh({ submitted = false, selectionChanged = false, deactivated = '' } = {}) {
   clearTimeout(refreshTimer);
   try {
     const settings = collect();
@@ -467,11 +492,16 @@ function refresh({ submitted = false, selectionChanged = false } = {}) {
     else announce(submitted ? '計算して設定を保存しました。' : '');
     if (submitted && !model.input.issue && matchMedia('(max-width: 730px)').matches) $('paces').focus();
   } catch (error) {
-    if (selectionChanged) {
+    if (deactivated) {
+      const settings = { ...savedSettings, [deactivated]: false };
+      model = calculate(settings);
+      show();
+      store(settings);
+    } else if (selectionChanged) {
       const settings = { ...savedSettings, paceMode: form.elements.paceMode.value };
       store(settings);
     }
-    const message = `${error.message} 練習計画は前回の計算結果を表示しています。`;
+    const message = `${error.message} ${deactivated ? 'チェックを外した種目を除外し、ほかの項目には前回の有効な設定を使っています。' : '練習計画は前回の計算結果を表示しています。'}`;
     $('cross-message').textContent = error instanceof CrossTrainingError ? message : '';
     announce(error instanceof CrossTrainingError && $('cross-settings').open ? '' : message, true);
   }
@@ -494,7 +524,9 @@ form.addEventListener('input', (event) => {
 });
 form.addEventListener('change', (event) => {
   syncForm();
-  refresh({ selectionChanged: event.target.name === 'paceMode' });
+  const { name, checked } = event.target;
+  const deactivated = !checked && crossFields.some(({ enabled }) => enabled === name) ? name : '';
+  refresh({ selectionChanged: name === 'paceMode', deactivated });
 });
 const alertWidths = $('alert-widths');
 function refreshAlertWidths(event) {
@@ -530,6 +562,7 @@ $('cycling-reference-picker').addEventListener('change', renderCyclingReference)
 $('cycling-reference-output').addEventListener('click', (event) => {
   const option = event.target.closest('[data-cycle-week]');
   if (!option) return;
+  form.elements.cyclingEnabled.checked = true;
   form.elements.cyclingPlan.value = option.dataset.cycleWeek;
   syncForm();
   refresh();

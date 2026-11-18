@@ -12,6 +12,41 @@ test('empty settings preserve running time with no extra activities', () => {
   assert.deepEqual(week.activity, { running: 18000, cycling: 0, other: 0, high: 0, rest: 0, total: 18000, conflicts: [] });
 });
 
+test('each activity can be excluded independently from the schedule, totals and conflicts', () => {
+  const settings = {
+    cyclingPlan: 'weekA', cyclingFtp: 200,
+    otherDays: [1, 2], otherMinutes: 30, otherIntensity: 'high', otherFrequency: 2,
+  };
+  const disabledCycling = plan({ ...settings, cyclingEnabled: false }).weeks[0];
+  assert.equal(disabledCycling.activity.cycling, 0);
+  assert.equal(disabledCycling.activity.other, 3600);
+  assert.equal(disabledCycling.activity.total, disabledCycling.total + 3600);
+  assert.equal(disabledCycling.activity.high, 2);
+  assert.ok(disabledCycling.activity.conflicts.every(({ kind }) => kind === 'other'));
+  assert.ok(disabledCycling.calendar.every(({ cross }) => cross.every(({ kind }) => kind === 'other')));
+
+  const disabledOther = plan({ ...settings, otherEnabled: false }).weeks[0];
+  assert.equal(disabledOther.activity.cycling, 185 * 60);
+  assert.equal(disabledOther.activity.other, 0);
+  assert.equal(disabledOther.activity.total, disabledOther.total + 185 * 60);
+  assert.equal(disabledOther.activity.high, 1);
+  assert.ok(disabledOther.activity.conflicts.every(({ kind }) => kind === 'cycling'));
+
+  const bothDisabled = plan({ ...settings, cyclingEnabled: false, otherEnabled: false }).weeks[0];
+  assert.equal(bothDisabled.activity.total, bothDisabled.total);
+  assert.deepEqual(bothDisabled.activity.conflicts, []);
+});
+
+test('disabled activities can retain unfinished settings', () => {
+  const settings = {
+    cyclingEnabled: false, cyclingDays: [0],
+    otherEnabled: false, otherDays: [2], otherFrequency: 4,
+  };
+  assert.deepEqual(crossSchedule(settings).flat(), []);
+  assert.throws(() => crossSchedule({ ...settings, cyclingEnabled: true }), /サイクリングの1回の時間/);
+  assert.throws(() => crossSchedule({ ...settings, otherEnabled: true }), /週間実施回数/);
+});
+
 test('keep fixed weekdays, count both disciplines and preserve every running workout', () => {
   const settings = {
     count: 6,

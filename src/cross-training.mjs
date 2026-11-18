@@ -1,6 +1,6 @@
 export const CROSS_DEFAULTS = {
-  cyclingPlan: 'custom', cyclingDays: [], cyclingMinutes: '', cyclingIntensity: 'low', cyclingFtp: '',
-  otherDays: [], otherMinutes: '', otherIntensity: 'low', otherFrequency: '', otherNote: '',
+  cyclingEnabled: true, cyclingPlan: 'custom', cyclingDays: [], cyclingMinutes: '', cyclingIntensity: 'low', cyclingFtp: '',
+  otherEnabled: true, otherDays: [], otherMinutes: '', otherIntensity: 'low', otherFrequency: '', otherNote: '',
 };
 export const INTENSITIES = { low: '低', medium: '中', high: '高' };
 export const CROSS_LABELS = { cycling: 'Cycling', other: 'その他のトレーニング' };
@@ -32,26 +32,26 @@ export function cyclingWatts(percent, ftp) {
 
 export function crossSchedule(settings) {
   const {
-    cyclingPlan, cyclingDays, cyclingMinutes, cyclingIntensity, cyclingFtp,
-    otherDays, otherMinutes, otherIntensity, otherFrequency, otherNote,
+    cyclingEnabled, cyclingPlan, cyclingDays, cyclingMinutes, cyclingIntensity, cyclingFtp,
+    otherEnabled, otherDays, otherMinutes, otherIntensity, otherFrequency, otherNote,
   } = { ...CROSS_DEFAULTS, ...settings };
   const schedule = Array.from({ length: 7 }, () => []);
   const add = (day, { minutes, ...activity }) => schedule[day].push({ ...activity, total: minutes * 60 });
 
-  const reference = CYCLING_WEEKS[cyclingPlan];
+  const reference = cyclingEnabled && CYCLING_WEEKS[cyclingPlan];
   if (reference) {
     reference.days.forEach((activity, day) => {
       if (activity.kind === 'cycling') add(day, { ...activity, source: reference.name, watts: cyclingWatts(activity.ftp, cyclingFtp) });
     });
-  } else if (cyclingDays.length) {
+  } else if (cyclingEnabled && cyclingDays.length) {
     if (!cyclingMinutes) throw new CrossTrainingError('サイクリングの1回の時間を入力してください。');
     for (const day of cyclingDays) add(day, { kind: 'cycling', minutes: cyclingMinutes, intensity: cyclingIntensity });
   }
 
-  if (otherFrequency !== '' && otherFrequency !== otherDays.length) {
+  if (otherEnabled && otherFrequency !== '' && otherFrequency !== otherDays.length) {
     throw new CrossTrainingError('その他のトレーニングは週間実施回数と選択曜日の数をそろえてください。');
   }
-  if (otherDays.length) {
+  if (otherEnabled && otherDays.length) {
     if (!otherMinutes) throw new CrossTrainingError('その他のトレーニングの1回の時間を入力してください。');
     for (const day of otherDays) add(day, { kind: 'other', minutes: otherMinutes, intensity: otherIntensity, note: otherNote });
   }
