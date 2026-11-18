@@ -1,5 +1,5 @@
 import { BOOK_WEEKS, REP_MINUTES } from './reference.mjs';
-import { COROS_SOURCES, DEFAULTS, PACE_MODES, RACES, WEEKDAYS, clock, environmentalPace, localDate, paceInputs, parseClock, session, trainingPlan } from './engine.mjs';
+import { COROS_SOURCES, DEFAULTS, PACE_MODES, RACES, WEEKDAYS, clock, corosPaceAlert, easyRunGuide, environmentalPace, localDate, paceInputs, parseClock, session, trainingPlan } from './engine.mjs';
 import { CROSS_LABELS, CYCLING_MODES, CYCLING_WEEKS, INTENSITIES, CrossTrainingError, cyclingWatts } from './cross-training.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -91,6 +91,8 @@ const descriptors = [
   time('five', '5 km タイム'),
   time('coros', 'COROS 閾値ペース'),
   time('corosPrediction', 'COROS の5 kmレース予測タイム'),
+  number('alertFast', '速い側の許容幅（秒/km）', 0, 60, '5', 'any'),
+  number('alertSlow', '遅い側の許容幅（秒/km）', 0, 60, '10', 'any'),
   ...REP_MINUTES.map((rep) => time(`pace${rep}`, `${rep}分反復ペース`)),
   ...[...fields, ...crossFields].flatMap((group) => group.fields),
 ];
@@ -251,8 +253,6 @@ function renderPaces() {
     ${source === 'threshold' ? `<p class="note">COROS閾値ペースを${duration}分持続可能なペースと仮定し、Riegelモデルから5kmタイムを推定しています。この換算は本書およびCOROS公式の指定式ではありません。Riegel指数は${exponent}です。</p>` : ''}
     ${source === 'prediction' ? '<p class="note">COROS のレース予測タイムを表 1.4 に当てはめています。</p>' : ''}
     ${notes(warnings)}
-    ${settings.lthr ? `<p class="note">心拍の目安（書籍）　序盤 ${settings.lthr - 15}〜${settings.lthr - 10} bpm。終盤は LTHR ${settings.lthr} bpm 未満。</p>` : ''}
-    ${settings.maxHr ? `<p class="note">Easy の平均心拍の目安（書籍）　最大心拍数の70%以下（${Math.floor(settings.maxHr * .7)} bpm）。</p>` : ''}
     <details class="data"${detailsOpen ? ' open' : ''}><summary>おすすめインターバルと所要時間</summary>
       <p class="note">選択週にない反復種別は独立したセッション例です。</p>
       <div class="table-wrap"><table>
@@ -265,6 +265,42 @@ function renderPaces() {
       <p class="note">WU ${settings.warmup}分・CD ${settings.cooldown}分。</p>
       ${paces.filter((pace) => pace.changes.length).map((pace) => `<p class="note">${pace.rep}分反復　${pace.changes.map(({ label, delta }) => `${label} ${delta >= 0 ? '+' : ''}${delta.toFixed(1)}秒/km`).join(' ／ ')}</p>`).join('')}
     </details>`;
+}
+
+function renderTrainingGuides() {
+  const { input, paces, settings } = model;
+  const { pace, outOfRange, heartRate } = easyRunGuide(input.reference, settings.maxHr);
+  const referenceLabel = { five: '5 km実測', threshold: 'Riegel モデルによる推定5 km', prediction: 'COROS の5 kmレース予測' }[input.source];
+  const easyNote = outOfRange ? '表 2.3 の対象範囲は5 kmタイム15:20〜30:00です。'
+    : input.source === 'manual' ? 'ペースの目安を表示するには、5 kmタイム基準またはCOROS閾値ペース基準を選んでください。'
+    : pace === null ? '選択した方式の入力がそろうと、ペースの目安が表示されます。' : '';
+  $('easy-guide-output').innerHTML = `
+    <p class="easy-guide-limit">イージーランのペース上限目安　<strong>${paceLabel(pace)}</strong></p>
+    ${input.reference !== null ? `<p class="note">${referenceLabel} ${clock(input.reference)} · 表 2.3</p>` : ''}
+    ${easyNote ? `<p class="note${outOfRange ? ' warning' : ''}">${easyNote}</p>` : ''}
+    <p class="note">ペースは速い側の上限目安です。実際はそれより遅いペースで走って構いません。</p>
+    <p class="note">本書はペースより平均心拍を優先し、最大心拍数（HRmax）の70%を平均心拍の上限目安としています。心拍が高くなりそうならペースを落とします。</p>
+    <p class="note">${heartRate === null ? '最大心拍数を詳細設定に入力すると、70%に相当する心拍数を表示します。'
+        : `平均心拍の上限目安　<strong>${heartRate} bpm</strong>（最大心拍数 ${settings.maxHr} bpm × 70%）`}</p>`;
+
+  $('pace-alert-output').innerHTML = `
+    <p class="note">表示中の Sub-T ペースを使用します。環境補正が適用される場合は補正後のペースが基準です。</p>
+    ${paces.every((pace) => pace.adjusted === null) ? '<p class="note">Sub-T ペースが算出されると、COROS への設定用の境界を表示します。</p>' : ''}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">反復時間</th><th scope="col">目標ペース</th><th scope="col">速い側の境界</th><th scope="col">遅い側の境界</th></tr></thead>
+      <tbody>${paces.map(({ rep, adjusted }) => {
+        const bounds = corosPaceAlert(adjusted, settings.alertFast, settings.alertSlow);
+        return `<tr><th scope="row">${rep}分</th><td>${paceLabel(adjusted)}</td><td>${paceLabel(bounds?.fast ?? null)}</td><td>${paceLabel(bounds?.slow ?? null)}</td></tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    ${settings.lthr ? `<div class="lthr-guide">
+      <h3>LTHR ガードレール（書籍）</h3>
+      <ul>
+        <li>最初の反復終了時は、LTHRより10〜15 bpm低い ${settings.lthr - 15}〜${settings.lthr - 10} bpmが目安です。</li>
+        <li>最後の反復は、原則としてLTHR（${settings.lthr} bpm）を継続的に超えないようにします。</li>
+        <li>心拍の反応には遅れや個人差があります。体感の強度も併せて確認します。</li>
+      </ul>
+    </div>` : '<p class="note">COROS 閾値心拍数を詳細設定に入力すると、LTHR ガードレールを表示します。</p>'}`;
 }
 
 function renderWeek() {
@@ -342,8 +378,10 @@ function renderProgress() {
 
 function show() {
   selectedWeek = Math.min(selectedWeek, model.plan.weeks.length - 1);
+  $('alert-width-error').textContent = '';
   $('week-picker').replaceChildren(...model.plan.weeks.map((week, i) => new Option(`第${week.index}週`, i)));
   renderPaces();
+  renderTrainingGuides();
   renderWeek();
   renderProgress();
   renderCyclingReference();
@@ -456,6 +494,17 @@ form.addEventListener('change', (event) => {
   syncForm();
   refresh({ selectionChanged: ['paceMode', 'corosSource'].includes(event.target.name) });
 });
+const alertWidths = $('alert-widths');
+function refreshAlertWidths(event) {
+  const valid = [...alertWidths.querySelectorAll('input')].every((field) => field.validity.valid);
+  $('alert-width-error').textContent = valid ? '' : '許容幅は0〜60秒/kmで入力してください。前回の範囲を表示しています。';
+  if (valid && event.type !== 'invalid') refresh();
+}
+alertWidths.addEventListener('input', refreshAlertWidths);
+alertWidths.addEventListener('invalid', (event) => {
+  $('coros-pace-alert').open = true;
+  refreshAlertWidths(event);
+}, true);
 $('week-picker').addEventListener('change', (event) => selectWeek(+event.target.value));
 $('progress-output').addEventListener('click', (event) => {
   const button = event.target.closest('[data-week]');

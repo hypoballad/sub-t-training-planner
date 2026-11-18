@@ -93,6 +93,24 @@
         <section class="panel pace-panel" id="paces" aria-labelledby="pace-heading" tabindex="-1">
           <div class="section-head"><div><p class="eyebrow">PACE GUIDE</p><h2 id="pace-heading">Sub-T ペース</h2></div><span id="pace-status" class="tag">入力待ち</span></div>
           <div id="pace-output"></div>
+          <details class="data" id="easy-run-guide">
+            <summary>Easy Run Guide</summary>
+            <div id="easy-guide-output"></div>
+          </details>
+          <details class="data" id="coros-pace-alert">
+            <summary>COROS Pace Alert</summary>
+            <div id="alert-widths" class="field-grid alert-widths">
+              <label class="field">速い側の許容幅（秒/km）
+                <input type="number" form="planner-form" name="alertFast" min="0" max="60" step="any" value="5" placeholder="5">
+              </label>
+              <label class="field">遅い側の許容幅（秒/km）
+                <input type="number" form="planner-form" name="alertSlow" min="0" max="60" step="any" value="10" placeholder="10">
+              </label>
+            </div>
+            <p class="note">空欄時は速い側5秒/km、遅い側10秒/kmです。初期値はアプリの実用設定で、本書に指定値はありません。</p>
+            <p class="form-message error" id="alert-width-error" role="status"></p>
+            <div id="pace-alert-output"></div>
+          </details>
         </section>
         <section class="panel" id="calendar" aria-labelledby="week-heading">
           <div class="section-head"><div><p class="eyebrow">WEEKLY PLAN</p><h2 id="week-heading">週間プラン</h2></div><label class="week-select">表示週 <select id="week-picker"></select></label></div>

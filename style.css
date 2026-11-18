@@ -78,6 +78,11 @@ summary::marker { color: var(--green); }
 .settings fieldset { min-inline-size: 0; margin: 12px 0 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--line); }
 legend { font-size: .8rem; padding-right: 6px; font-weight: 750; color: var(--green); }
 .field-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 8px; }
+.alert-widths { margin-top: 10px; max-width: 380px; }
+.easy-guide-limit { margin: 9px 0 0; }
+.easy-guide-limit strong { color: var(--green); font-size: 1.1rem; }
+.lthr-guide { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.lthr-guide ul { margin: 6px 0 0; padding-inline-start: 20px; color: var(--muted); font-size: .82rem; }
 .manual-paces { min-inline-size: 0; margin: 0 0 15px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
 .manual-paces .field-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .pace-source { margin: 0 0 11px; color: var(--green); font-weight: 700; font-size: .88rem; }

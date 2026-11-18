@@ -1,4 +1,4 @@
-import { BOOK_WEEKS, ELEVATION, PACE_ROWS, REP_MINUTES, REST_DEFAULTS, WIND } from './reference.mjs';
+import { BOOK_WEEKS, EASY_PACES, ELEVATION, PACE_ROWS, REP_MINUTES, REST_DEFAULTS, WIND } from './reference.mjs';
 import { estimateCorosFiveK, RIEGEL_DEFAULTS } from './coros.mjs';
 import { CROSS_DEFAULTS, addCrossTraining, crossSchedule } from './cross-training.mjs';
 
@@ -11,6 +11,7 @@ export const DEFAULTS = {
   ...CROSS_DEFAULTS,
   paceMode: 'five', corosSource: 'threshold', five: '', coros: '', corosPrediction: '',
   riegelMinutes: RIEGEL_DEFAULTS.minutes, riegelExponent: RIEGEL_DEFAULTS.exponent,
+  alertFast: 5, alertSlow: 10,
   lthr: '', maxHr: '', hours: '', count: 7, easy: '', long: '', sessions: '',
   race: 'general', starts: '', ends: '', weeks: '', expected: '', days: [],
   mode: 'standard', hold: 4, interval: 3, increment: 15, subShare: 20, recoveryEvery: 0, recoveryCut: 20,
@@ -85,12 +86,26 @@ export function paceInputs(settings) {
   }
   const label = source === 'manual' ? '手動指定' : (reference - 900) % 20 ? '表 1.4・線形補間' : '表 1.4';
   const paces = REP_MINUTES.map((rep, i) => ({ rep, base: values?.[i] ?? null, source: label }));
-  return { five, coros, prediction, estimate, source, duration, exponent, issue, outOfRange, comparisonWarnings, paces };
+  return { five, coros, prediction, estimate, reference, source, duration, exponent, issue, outOfRange, comparisonWarnings, paces };
 }
 
 function interpolate(values, position) {
   const i = Math.floor(position);
   return values[i] + (position - i) * ((values[i + 1] ?? values[i]) - values[i]);
+}
+
+export function easyRunGuide(fiveSeconds, maxHr) {
+  const position = (fiveSeconds - 920) / 20;
+  const hasTime = Number.isFinite(fiveSeconds);
+  const outOfRange = hasTime && (position < 0 || position > EASY_PACES.length - 1);
+  const pace = hasTime && !outOfRange ? interpolate(EASY_PACES, position) : null;
+  const heartRate = Number.isFinite(maxHr) && maxHr > 0 ? maxHr * 7 / 10 : null;
+  return { pace, outOfRange, heartRate };
+}
+
+export function corosPaceAlert(pace, fastWidth = DEFAULTS.alertFast, slowWidth = DEFAULTS.alertSlow) {
+  if (!Number.isFinite(pace)) return null;
+  return { fast: pace - fastWidth, slow: pace + slowWidth };
 }
 
 export function environmentalPace(base, settings) {
