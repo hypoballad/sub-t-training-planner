@@ -160,7 +160,16 @@ thead th { background: var(--light); white-space: nowrap; }
 .reference details { border-top: 1px solid var(--line); padding: 11px 0; }
 .reference details p { margin: 8px 0 0; max-width: 87ch; color: var(--muted); font-size: .86rem; }
 .book-select { margin-top: 10px; max-width: 200px; }
-.source { font-size: .78rem; color: var(--muted); margin: 3px 0 0; }
+.reference-book { margin: 17px 0; }
+.reference-book-content { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 14px 28px; margin-top: 14px; }
+.reference-book-content h3 { font-size: 1.1rem; line-height: 1.35; }
+.reference-book-content cite { font-style: normal; }
+.reference-book p { margin: 6px 0 0; color: var(--muted); }
+.reference-book-action { display: grid; gap: 5px; justify-items: start; }
+.reference-book-action p { margin: 0; font-size: .82rem; }
+.reference-book-action a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 14px; border-radius: 8px; background: var(--green); color: white; font-weight: 700; text-decoration: none; }
+.reference-book-action a:hover { background: #104b3a; }
+.reference-book-disclosures { margin-top: 14px; padding-top: 7px; border-top: 1px solid var(--line); font-size: .82rem; }
 .foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; color: var(--muted); font-size: .79rem; padding: 0 0 20px; }
 
 @media (max-width: 1100px) {
@@ -181,6 +190,8 @@ thead th { background: var(--light); white-space: nowrap; }
   .pace-tile { padding: 8px; }
   .chart button > b { font-size: .58rem; }
   .activity-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .reference-book-content { grid-template-columns: minmax(0,1fr); }
+  .reference-book-action a { width: 100%; }
 }
 @media (max-width: 360px) {
   .calendar { grid-template-columns: repeat(3,minmax(0,1fr)); }
