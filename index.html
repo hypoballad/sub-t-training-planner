@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#122823">
+  <meta name="description" content="5 km の走力からサブスレッショルドのペースと週間練習計画を作成します。">
+  <title>Sub-T Training Planner</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./src/app.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#planner">入力フォームへ移動</a>
+  <header class="top">
+    <div class="shell nav">
+      <a class="brand" href="#top"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>Sub-T<span class="brand-tail">Training Planner</span></a>
+      <nav aria-label="ページ内ナビゲーション">
+        <a href="#planner">プラン作成</a><a href="#references">書籍・計算の根拠</a>
+      </nav>
+    </div>
+  </header>
+  <main id="top" class="shell">
+    <div class="intro">
+      <div>
+        <p class="eyebrow">NORWEGIAN SINGLES METHOD</p>
+        <h1>Sub-T <span>Training Planner</span></h1>
+        <p>現在の走力から、サブスレッショルドのペースと練習計画を作成。</p>
+      </div>
+      <div class="intro-aside" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="workspace">
+      <section class="panel control" id="planner" aria-labelledby="control-heading">
+        <h2 id="control-heading">走力を入力</h2>
+        <p class="muted">いずれか一方で計算できます。</p>
+        <form id="planner-form">
+          <label class="field">5 km タイム
+            <span class="with-unit"><input name="five" type="text" placeholder="20:00" aria-describedby="five-help" maxlength="9"><span>分:秒</span></span>
+            <small id="five-help">最近の走力を反映した記録</small>
+          </label>
+          <label class="field">COROS 閾値ペース
+            <span class="with-unit"><input name="coros" type="text" placeholder="4:20" maxlength="9"><span>分:秒 /km</span></span>
+          </label>
+          <button class="primary" type="submit">計算する <span aria-hidden="true">→</span></button>
+          <p id="message" class="form-message" role="status"></p>
+          <details class="settings">
+            <summary>詳細設定</summary>
+            <div id="setting-fields"></div>
+          </details>
+        </form>
+        <div class="storage">
+          <span class="storage-dot" aria-hidden="true"></span> 入力はこのブラウザに保存
+          <div class="small-actions">
+            <button type="button" id="json-out">JSON出力</button>
+            <button type="button" id="json-in">読み込み</button>
+            <button type="button" id="reset">初期化</button>
+            <input type="file" id="upload" accept=".json,application/json" hidden>
+          </div>
+        </div>
+      </section>
+
+      <div class="results">
+        <section class="panel pace-panel" id="paces" aria-labelledby="pace-heading" tabindex="-1">
+          <div class="section-head"><div><p class="eyebrow">PACE GUIDE</p><h2 id="pace-heading">Sub-T ペース</h2></div><span id="pace-status" class="tag">入力待ち</span></div>
+          <div id="pace-output"></div>
+        </section>
+        <section class="panel" id="calendar" aria-labelledby="week-heading">
+          <div class="section-head"><div><p class="eyebrow">WEEKLY PLAN</p><h2 id="week-heading">週間プラン</h2></div><label class="week-select">表示週 <select id="week-picker"></select></label></div>
+          <div id="calendar-output"></div>
+        </section>
+        <section class="panel" id="progress" aria-labelledby="progress-heading">
+          <div class="section-head"><div><p class="eyebrow">PROGRESSION</p><h2 id="progress-heading">長期プラン</h2></div><div class="small-actions"><button id="csv" type="button">CSV出力</button><button id="print" type="button">印刷</button></div></div>
+          <div id="progress-output"></div>
+        </section>
+      </div>
+    </div>
+    <section class="panel reference" id="references" aria-labelledby="ref-heading">
+      <div class="section-head"><div><p class="eyebrow">METHOD</p><h2 id="ref-heading">書籍・計算の根拠</h2></div></div>
+      <details><summary>書籍の週例を見る</summary><label class="field book-select">週例<select id="book-picker"></select></label><div id="book-output"></div></details>
+      <details><summary>ペースとセッションの計算</summary>
+        <p>5 km の実績は表 1.4（15:00〜30:00）の隣接点を秒単位で線形補間します。手動ペースが入力された反復では手動値を優先します。COROS 閾値は機器の推定指標として表示します。Sub-T への換算根拠は未確定です。</p>
+        <p>所要時間は WU ＋ 反復回数 × 反復時間 ＋（反復回数 − 1）× 休息 ＋ CD。既定の休息は表 1.3 の60秒、60〜90秒、90〜120秒から60秒、75秒、105秒を採用。距離は時間÷ペースで求め、WU・CD とジョグのペースがあればセッション全体も計算します。</p>
+      </details>
+      <details><summary>週間計画・負荷増加・レース</summary>
+        <p>自動計画は表 2.5〜3.2 の開始時の練習量に近い構成を参照し、3・6・10分反復で組み直します。Easy側の集計はロングラン、WU・CD、反復間休息を含みます。日別の所要時間を秒単位で合計します。週間時間の変化率は Intervals.icu の Ramp Rate と別の指標です。</p>
+        <p>標準では4週維持し、以後3週ごとに15分増やします。書籍の Easy 4分に対し Sub-T 約1分という増分を目安にし、実際の Sub-T は反復単位で調整します。アプリの自動計画は週9時間を上限とし、4〜6日では日数に合わせて未配分時間を表示します。</p>
+        <p>ハーフのロングランは練習量に応じて延長し、書籍の目安95〜100分の上端を上限にします。フルは書籍の15週間のビルドを参考に時期別のロングラン配分を変え、180分と予想完走時間の短い方を上限とします。レース前の短縮率と実施日は、表 3.3・3.5 とフルの事例を参考にしたアプリ設定です。レース当日の時間は週間練習時間の集計から除きます。</p>
+      </details>
+      <details><summary>気象・高低差によるペース補正</summary>
+        <p>高低差は表 1.5〜1.7 の最も近い分/km行を使用します。風は表 1.8〜2.1 のペースと風速の間を補間します。両者の秒差を基準ペースに足し、その結果を 1 − 気温・露点の低下率で割ります。気温と露点は表 2.2 のうち強い方を使用します。この組み合わせは、各要素が独立すると仮定したアプリの補完です。</p>
+      </details>
+      <p class="source">参考文献　<em>Norwegian Singles Method: Subthreshold Running Kept Simple</em></p>
+    </section>
+  </main>
+  <footer class="shell foot"><span>Sub-T Training Planner</span><a href="#top">ページトップ ↑</a></footer>
+</body>
+</html>
