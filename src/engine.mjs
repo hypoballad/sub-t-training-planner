@@ -1,11 +1,15 @@
 import { BOOK_WEEKS, ELEVATION, PACE_ROWS, REP_MINUTES, REST_DEFAULTS, WIND } from './reference.mjs';
-import { corosReference } from './coros.mjs';
+import { estimateCorosFiveK, RIEGEL_DEFAULTS } from './coros.mjs';
 
 const DAY = 86400000;
 export const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
 export const RACES = { general: '一般トレーニング', '5k': '5 km', '10k': '10 km', half: 'ハーフマラソン', full: 'フルマラソン' };
+export const PACE_MODES = { five: '5 km タイム基準', coros: 'COROS 閾値ペース基準', manual: '手動指定' };
+export const COROS_SOURCES = { threshold: '閾値ペースから推定', prediction: 'COROS の5 kmレース予測タイムを使用' };
 export const DEFAULTS = {
-  five: '', coros: '', lthr: '', maxHr: '', hours: '', count: 7, easy: '', long: '', sessions: '',
+  paceMode: 'five', corosSource: 'threshold', five: '', coros: '', corosPrediction: '',
+  riegelMinutes: RIEGEL_DEFAULTS.minutes, riegelExponent: RIEGEL_DEFAULTS.exponent,
+  lthr: '', maxHr: '', hours: '', count: 7, easy: '', long: '', sessions: '',
   race: 'general', starts: '', ends: '', weeks: '', expected: '', days: [],
   mode: 'standard', hold: 4, interval: 3, increment: 15, subShare: 20, recoveryEvery: 0, recoveryCut: 20,
   warmup: 10, cooldown: 10, pace3: '', pace6: '', pace10: '', easyPace: '', jogPace: '',
@@ -39,25 +43,47 @@ export function tablePaces(fiveSeconds) {
   return PACE_ROWS[lower].map((pace, i) => pace + fraction * ((PACE_ROWS[lower + 1]?.[i] ?? pace) - pace));
 }
 
-function paceField(value, label, range) {
-  try {
-    return parseClock(value, { optional: true, ...range });
-  } catch (error) {
-    throw new Error(`${label}　${error.message}`);
-  }
-}
-
 export function paceInputs(settings) {
-  const five = paceField(settings.five, '5 km タイム', { min: 5, max: 120 });
-  const coros = corosReference(paceField(settings.coros, 'COROS 閾値ペース', { min: 2, max: 30 }));
-  if (five === null && coros === null) throw new Error('5 km タイムか COROS 閾値ペースを入力してください。');
-  const tabulated = tablePaces(five);
-  const paces = REP_MINUTES.map((rep, i) => {
-    const manual = paceField(settings[`pace${rep}`], `${rep}分反復ペース`, { min: 2, max: 30 });
-    const source = manual ? '手動指定' : (tabulated && (five - 900) % 20 ? '表 1.4・線形補間' : '表 1.4');
-    return { rep, base: manual ?? tabulated?.[i] ?? null, source };
-  });
-  return { five, coros, tabulated, paces };
+  const mode = settings.paceMode ?? DEFAULTS.paceMode;
+  const source = mode === 'coros' ? (settings.corosSource ?? DEFAULTS.corosSource) : mode;
+  const comparisonWarnings = [];
+  let issue = '';
+  const read = (name, label, range, active) => {
+    try {
+      const value = parseClock(settings[name], { optional: true, ...range });
+      if (value === null && active && !issue) issue = `${label}を入力してください。`;
+      return value;
+    } catch (error) {
+      const message = `${label}　${error.message}`;
+      if (active) issue = message;
+      else comparisonWarnings.push(`比較用の${message}`);
+      return null;
+    }
+  };
+  const five = read('five', '5 km タイム', { min: 5, max: 120 }, source === 'five');
+  const coros = read('coros', 'COROS 閾値ペース', { min: 2, max: 30 }, source === 'threshold');
+  const prediction = read('corosPrediction', 'COROS の5 kmレース予測タイム', { min: 5, max: 120 }, source === 'prediction');
+  const duration = settings.riegelMinutes ?? DEFAULTS.riegelMinutes;
+  const exponent = settings.riegelExponent ?? DEFAULTS.riegelExponent;
+  let estimate = null;
+  if (source === 'threshold' && coros !== null) {
+    try {
+      estimate = estimateCorosFiveK(coros, duration, exponent);
+    } catch (error) {
+      issue = error.message;
+    }
+  }
+  const reference = { five, threshold: estimate, prediction }[source] ?? null;
+  let values = tablePaces(reference);
+  const outOfRange = reference !== null && !values;
+  if (outOfRange) issue = '基準となる5 kmタイムが表 1.4 の15:00〜30:00の範囲外です。手動指定に切り替えられます。';
+  if (source === 'manual') {
+    values = REP_MINUTES.map((rep) => read(`pace${rep}`, `${rep}分反復ペース`, { min: 2, max: 30 }, true));
+    if (values.includes(null)) values = null;
+  }
+  const label = source === 'manual' ? '手動指定' : (reference - 900) % 20 ? '表 1.4・線形補間' : '表 1.4';
+  const paces = REP_MINUTES.map((rep, i) => ({ rep, base: values?.[i] ?? null, source: label }));
+  return { five, coros, prediction, estimate, source, duration, exponent, issue, outOfRange, comparisonWarnings, paces };
 }
 
 function interpolate(values, position) {

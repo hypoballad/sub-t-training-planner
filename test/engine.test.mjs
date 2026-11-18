@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, environmentalPace, paceInputs, parseClock, session, tablePaces, trainingPlan, weeklyPlan } from '../src/engine.mjs';
+import { DEFAULTS, clock, environmentalPace, paceInputs, parseClock, session, tablePaces, trainingPlan, weeklyPlan } from '../src/engine.mjs';
+import { estimateCorosFiveK } from '../src/coros.mjs';
 
 const cfg = (settings) => ({ ...DEFAULTS, ...settings });
 const date = '2026-11-16';
@@ -17,22 +18,86 @@ test('interpolate unrounded seconds and avoid extrapolation', () => {
   for (const value of [null, NaN, 899, 1801]) assert.equal(tablePaces(value), null);
 });
 
-test('validate COROS input and preserve the threshold independently', () => {
+test('COROS validates the selected input and identifies missing values', () => {
   assert.equal(parseClock('４：２０'), 260);
-  assert.throws(() => paceInputs(cfg({ coros: '4:65' })), /分:秒/);
-  assert.throws(() => paceInputs(cfg({ coros: '1:20' })), /2:00/);
-  assert.throws(() => paceInputs(DEFAULTS), /入力/);
-  const result = paceInputs(cfg({ coros: '4:20' }));
-  assert.equal(result.coros.thresholdSeconds, 260);
-  assert.equal(result.coros.subThresholdPaces, null);
-  assert.deepEqual(result.paces.map(({ base }) => base), [null, null, null]);
+  assert.match(paceInputs(cfg({ paceMode: 'coros', coros: '4:65' })).issue, /分:秒/);
+  assert.match(paceInputs(cfg({ paceMode: 'coros', coros: '1:20' })).issue, /2:00/);
+  assert.match(paceInputs(cfg({ paceMode: 'coros', five: '20:00' })).issue, /COROS 閾値ペースを入力/);
+  assert.match(paceInputs(DEFAULTS).issue, /5 km タイムを入力/);
 });
 
-test('prioritize manual paces per repetition without overriding the other inputs', () => {
-  const result = paceInputs(cfg({ five: '20:00', coros: '4:18', pace6: '4:23' }));
-  assert.equal(result.coros.thresholdSeconds, 258);
-  assert.deepEqual(result.paces.map(({ base }) => base), [254, 263, 269]);
-  assert.deepEqual(result.paces.map(({ source }) => source), ['表 1.4', '手動指定', '表 1.4']);
+test('COROS 4:50 uses full precision before table interpolation and display rounding', () => {
+  const result = paceInputs(cfg({ paceMode: 'coros', coros: '4:50' }));
+  assert.equal(result.issue, '');
+  assert.equal(result.coros, 290);
+  assert.ok(Math.abs(result.estimate - 1373.0044105016764) < 1e-9);
+  assert.equal(clock(result.estimate), '22:53');
+  assert.ok(result.paces[0].base > 288.6 && result.paces[0].base < 288.61);
+  assert.deepEqual(result.paces.map(({ base }) => clock(base)), ['4:49', '4:56', '5:06']);
+});
+
+test('Riegel duration and exponent are independent settings', () => {
+  assert.ok(estimateCorosFiveK(290, 45) > estimateCorosFiveK(290));
+  assert.equal(Math.round(estimateCorosFiveK(290, 60, 1)), 1450);
+  const settings = cfg({ paceMode: 'coros', coros: '4:50', riegelMinutes: 45, riegelExponent: 1.1 });
+  assert.equal(paceInputs(settings).estimate, estimateCorosFiveK(290, 45, 1.1));
+  assert.throws(() => estimateCorosFiveK(290, 0), /持続時間/);
+  assert.throws(() => estimateCorosFiveK(290, 60, Infinity), /指数/);
+});
+
+test('only the selected mode feeds the plan; comparison values never override it', () => {
+  const settings = cfg({ five: '20:00', coros: '4:50', corosPrediction: '22:40', pace3: '5:00', pace6: '5:10', pace10: '5:30' });
+  const actual = paceInputs(settings);
+  assert.equal(actual.five, 1200);
+  assert.equal(actual.coros, 290);
+  assert.equal(actual.estimate, null);
+  assert.deepEqual(actual.paces.map(({ base }) => base), [254, 260, 269]);
+  const threshold = paceInputs({ ...settings, paceMode: 'coros' });
+  assert.equal(clock(threshold.paces[0].base), '4:49');
+  const manual = paceInputs({ ...settings, paceMode: 'manual' });
+  assert.deepEqual(manual.paces.map(({ base }) => base), [300, 310, 330]);
+  assert.equal(paceInputs({ ...settings, paceMode: 'manual', pace6: '' }).paces[0].base, null);
+  const badComparison = paceInputs({ ...settings, coros: '5:70' });
+  assert.equal(badComparison.issue, '');
+  assert.equal(badComparison.comparisonWarnings.length, 1);
+  assert.equal(badComparison.paces[0].base, 254);
+});
+
+test('COROS race prediction uses the table directly and never falls back to Riegel', () => {
+  const settings = cfg({ paceMode: 'coros', corosSource: 'prediction', coros: '4:50', five: '20:00', corosPrediction: '22:40' });
+  const result = paceInputs(settings);
+  assert.equal(result.prediction, 1360);
+  assert.equal(result.estimate, null);
+  assert.deepEqual(result.paces.map(({ base }) => base), [286, 293, 303]);
+  assert.equal(paceInputs({ ...settings, corosPrediction: '' }).paces[0].base, null);
+});
+
+test('all tabulated sources decline times outside Table 1.4 without substituting comparison data', () => {
+  for (const settings of [
+    cfg({ five: '30:01', coros: '4:50' }),
+    cfg({ paceMode: 'coros', coros: '7:30', five: '20:00' }),
+    cfg({ paceMode: 'coros', corosSource: 'prediction', corosPrediction: '14:59', five: '20:00' }),
+  ]) {
+    const result = paceInputs(settings);
+    assert.equal(result.outOfRange, true);
+    assert.match(result.issue, /15:00〜30:00/);
+    assert.ok(result.paces.every(({ base }) => base === null));
+  }
+});
+
+test('COROS-derived paces reach all planned workout types and dated race tapers', () => {
+  for (const race of ['general', 'half', 'full']) {
+    const settings = cfg({ race, ends: '2027-02-14', paceMode: 'coros', coros: '4:50' });
+    const paces = paceInputs(settings).paces.map((pace) => ({ ...pace, ...environmentalPace(pace.base, settings) }));
+    const plan = trainingPlan({ ...settings, paces }, date);
+    assert.equal(plan.weeks[0].calendar.filter((day) => day.kind === 'sub').length, 3);
+    for (const week of plan.weeks) {
+      for (const day of week.calendar.filter((day) => day.kind === 'sub')) {
+        assert.equal(day.pace, paces.find(({ rep }) => rep === day.rep).base);
+        assert.equal(day.workDistance, day.sub / day.pace);
+      }
+    }
+  }
 });
 
 test('session adds only between-rep rests and handles one repetition', () => {
