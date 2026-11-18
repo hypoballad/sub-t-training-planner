@@ -395,3 +395,4 @@ try {
   announce('保存済みの設定を読み込めなかったため、初期値を表示しています。', true);
 }
 show();
+$('calculate').disabled = false;

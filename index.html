@@ -32,7 +32,7 @@
       <section class="panel control" id="planner" aria-labelledby="control-heading">
         <h2 id="control-heading">走力を入力</h2>
         <p class="muted">いずれか一方で計算できます。</p>
-        <form id="planner-form">
+        <form id="planner-form" method="dialog">
           <label class="field">5 km タイム
             <span class="with-unit"><input name="five" type="text" placeholder="20:00" aria-describedby="five-help" maxlength="9"><span>分:秒</span></span>
             <small id="five-help">最近の走力を反映した記録</small>
@@ -40,7 +40,8 @@
           <label class="field">COROS 閾値ペース
             <span class="with-unit"><input name="coros" type="text" placeholder="4:20" maxlength="9"><span>分:秒 /km</span></span>
           </label>
-          <button class="primary" type="submit">計算する <span aria-hidden="true">→</span></button>
+          <button class="primary" id="calculate" type="submit" disabled>計算する <span aria-hidden="true">→</span></button>
+          <noscript><p class="form-message error">計算には JavaScript が必要です。</p></noscript>
           <p id="message" class="form-message" role="status"></p>
           <details class="settings">
             <summary>詳細設定</summary>

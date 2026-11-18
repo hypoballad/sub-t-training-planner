@@ -66,7 +66,8 @@ input:not([type="checkbox"], [type="file"]), select { width: 100%; min-width: 0;
 .with-unit input:focus-visible { outline: none; }
 .with-unit > span:last-child { white-space: nowrap; color: var(--muted); padding-right: 10px; font-size: .71rem; }
 .primary { width: 100%; display: flex; justify-content: space-between; border: 0; border-radius: 8px; color: white; background: var(--green); padding: 10px 13px; font-weight: 720; }
-.primary:hover { background: #104b3a; }
+.primary:enabled:hover { background: #104b3a; }
+.primary:disabled { cursor: wait; opacity: .65; }
 .form-message { font-size: .79rem; color: var(--green); margin: 8px 0 0; }
 .form-message:empty { display: none; }
 .form-message.error, .warning { color: #8b410f; }
